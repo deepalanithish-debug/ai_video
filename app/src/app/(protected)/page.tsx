@@ -19,8 +19,22 @@ interface Draft {
   name: string;
   status: string;
   updated_at: string;
+  last_updated?: string;
   aspect_ratio?: string;
   prompt?: string;
+  timeline_data?: string | null;
+}
+
+interface DraftScene {
+  id: string;
+  type?: string;
+  duration?: number;
+  clips?: Array<{ src?: string; type?: string }>;
+  background?: string;
+  color?: string;
+  generatedImage?: string;
+  description?: string;
+  visualPrompt?: string;
 }
 
 interface Project {
@@ -260,19 +274,268 @@ function ProjectCard({ project, index }: { project: Project; index: number }) {
   );
 }
 
+function DraftThumbnail({ draft, gradient }: { draft: Draft; gradient: string }) {
+  const scenes: DraftScene[] = (() => {
+    if (!draft.timeline_data) return [];
+    try {
+      const parsed = JSON.parse(draft.timeline_data);
+      return parsed.scenes ?? parsed.timeline?.scenes ?? [];
+    } catch {
+      return [];
+    }
+  })();
+
+  const sceneColors = [
+    "#7c3aed", "#06b6d4", "#10b981", "#c9a96e",
+    "#ec4899", "#f59e0b", "#8b5cf6", "#0891b2",
+  ];
+
+  if (scenes.length === 0) {
+    return (
+      <div style={{ height: 100, background: gradient, position: "relative" }}>
+        <div style={{
+          position: "absolute",
+          inset: 0,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flexDirection: "column",
+          gap: 4,
+        }}>
+          <div style={{ fontSize: 28, opacity: 0.6 }}>🎬</div>
+          <div style={{ fontSize: 10, color: "rgba(255,255,255,0.5)", fontWeight: 500 }}>No timeline yet</div>
+        </div>
+      </div>
+    );
+  }
+
+  const totalDuration = scenes.reduce((sum, s) => sum + (s.duration ?? 3), 0) || 1;
+  const aspectLabel = draft.aspect_ratio ?? "9:16";
+  const coverImage = scenes[0]?.generatedImage;
+
+  // If first scene has an AI-generated image, use it as a cover photo
+  if (coverImage) {
+    return (
+      <div style={{ height: 100, position: "relative", overflow: "hidden", background: "#0d0d1a" }}>
+        {/* Cover image */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={coverImage}
+          alt="Scene preview"
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            display: "block",
+          }}
+        />
+        {/* Dark gradient overlay */}
+        <div style={{
+          position: "absolute",
+          inset: 0,
+          background: "linear-gradient(180deg, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.55) 100%)",
+        }} />
+
+        {/* AI badge */}
+        <div style={{
+          position: "absolute",
+          top: 6,
+          left: 8,
+          display: "flex",
+          alignItems: "center",
+          gap: 4,
+          fontSize: 9,
+          fontWeight: 700,
+          color: "#c9a96e",
+          background: "rgba(0,0,0,0.7)",
+          backdropFilter: "blur(4px)",
+          padding: "2px 7px",
+          borderRadius: 10,
+          border: "1px solid rgba(201,169,110,0.3)",
+        }}>
+          ✨ AI Visual
+        </div>
+
+        {/* Scene strip (compact at bottom) */}
+        <div style={{
+          position: "absolute",
+          bottom: 0,
+          left: 0,
+          right: 0,
+          height: 16,
+          display: "flex",
+          gap: 1,
+        }}>
+          {scenes.map((scene, i) => {
+            const pct = ((scene.duration ?? 3) / totalDuration) * 100;
+            const color = sceneColors[i % sceneColors.length];
+            return (
+              <div
+                key={scene.id ?? i}
+                style={{
+                  width: `${pct}%`,
+                  height: "100%",
+                  background: scene.generatedImage ? color : `${color}60`,
+                  opacity: i === 0 ? 1 : 0.7,
+                  flexShrink: 0,
+                  borderTop: `1px solid ${color}`,
+                  position: "relative",
+                }}
+              >
+                {/* Dot if this scene has an image */}
+                {scene.generatedImage && (
+                  <div style={{
+                    position: "absolute",
+                    top: "50%",
+                    left: "50%",
+                    transform: "translate(-50%,-50%)",
+                    width: 4,
+                    height: 4,
+                    borderRadius: "50%",
+                    background: "#fff",
+                    opacity: 0.8,
+                  }} />
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Stats */}
+        <div style={{
+          position: "absolute",
+          bottom: 20,
+          right: 8,
+          display: "flex",
+          gap: 4,
+        }}>
+          <span style={{
+            fontSize: 9,
+            fontWeight: 600,
+            color: "#f1f1f6",
+            background: "rgba(0,0,0,0.7)",
+            backdropFilter: "blur(4px)",
+            padding: "1px 6px",
+            borderRadius: 8,
+          }}>
+            {scenes.length} scenes · ~{Math.round(totalDuration)}s
+          </span>
+          <span style={{
+            fontSize: 9,
+            fontWeight: 600,
+            color: "#c9a96e",
+            background: "rgba(0,0,0,0.7)",
+            backdropFilter: "blur(4px)",
+            padding: "1px 6px",
+            borderRadius: 8,
+          }}>
+            {aspectLabel}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  // No generated images — show coloured scene strip
+  return (
+    <div style={{ height: 100, background: "#0d0d1a", position: "relative", overflow: "hidden" }}>
+      <div style={{ display: "flex", height: "100%", gap: 1 }}>
+        {scenes.map((scene, i) => {
+          const pct = ((scene.duration ?? 3) / totalDuration) * 100;
+          const color = sceneColors[i % sceneColors.length];
+          return (
+            <div
+              key={scene.id ?? i}
+              style={{
+                width: `${pct}%`,
+                height: "100%",
+                background: `linear-gradient(180deg, ${color}30 0%, ${color}10 100%)`,
+                borderLeft: i === 0 ? "none" : `1px solid rgba(255,255,255,0.05)`,
+                position: "relative",
+                flexShrink: 0,
+              }}
+            >
+              <div style={{
+                position: "absolute",
+                bottom: 5,
+                left: "50%",
+                transform: "translateX(-50%)",
+                fontSize: 9,
+                color: `${color}cc`,
+                fontWeight: 700,
+                whiteSpace: "nowrap",
+              }}>
+                {i + 1}
+              </div>
+              <div style={{
+                position: "absolute",
+                top: 0, left: 0, right: 0,
+                height: 2,
+                background: color,
+                opacity: 0.6,
+              }} />
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{ position: "absolute", top: 8, left: 10, display: "flex", alignItems: "center", gap: 6 }}>
+        <span style={{
+          fontSize: 10, fontWeight: 700, color: "#f1f1f6",
+          background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)",
+          padding: "2px 7px", borderRadius: 10,
+        }}>
+          {scenes.length} scenes
+        </span>
+        <span style={{
+          fontSize: 10, fontWeight: 600, color: "#a78bfa",
+          background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)",
+          padding: "2px 7px", borderRadius: 10,
+        }}>
+          ~{Math.round(totalDuration)}s
+        </span>
+      </div>
+
+      <div style={{
+        position: "absolute", top: 8, right: 10,
+        fontSize: 10, fontWeight: 600, color: "#c9a96e",
+        background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)",
+        padding: "2px 7px", borderRadius: 10,
+      }}>
+        {aspectLabel}
+      </div>
+
+      <div style={{
+        position: "absolute", inset: 0,
+        backgroundImage: "repeating-linear-gradient(90deg, rgba(255,255,255,0.015) 0px, transparent 1px, transparent 24px)",
+        pointerEvents: "none",
+      }} />
+    </div>
+  );
+}
+
 function DraftCard({
   draft,
   index,
   onDelete,
+  onRename,
+  onArchive,
+  onDuplicate,
 }: {
   draft: Draft;
   index: number;
   onDelete: (id: string) => void;
+  onRename: (id: string, name: string) => void;
+  onArchive: (id: string) => void;
+  onDuplicate: (id: string) => void;
 }) {
   const router = useRouter();
   const [hovered, setHovered] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [renameVal, setRenameVal] = useState(draft.name);
   const menuRef = useRef<HTMLDivElement>(null);
+  const renameRef = useRef<HTMLInputElement>(null);
   const gradient = THUMB_GRADIENTS[(index + 2) % THUMB_GRADIENTS.length];
 
   // Close menu on outside click
@@ -285,6 +548,20 @@ function DraftCard({
     if (menuOpen) document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [menuOpen]);
+
+  // Focus rename input when it appears
+  useEffect(() => {
+    if (renaming) setTimeout(() => renameRef.current?.select(), 50);
+  }, [renaming]);
+
+  function commitRename() {
+    const trimmed = renameVal.trim();
+    if (trimmed && trimmed !== draft.name) onRename(draft.id, trimmed);
+    else setRenameVal(draft.name);
+    setRenaming(false);
+  }
+
+  const displayDate = draft.last_updated ?? draft.updated_at;
 
   return (
     <div
@@ -306,11 +583,10 @@ function DraftCard({
         position: "relative",
       }}
     >
-      {/* Thumbnail strip */}
-      <div
-        onClick={() => router.push(`/editor?draft=${draft.id}`)}
-        style={{ height: 100, background: gradient }}
-      />
+      {/* Thumbnail — storyboard preview */}
+      <div onClick={() => router.push(`/editor?draft=${draft.id}`)}>
+        <DraftThumbnail draft={draft} gradient={gradient} />
+      </div>
 
       {/* Card body */}
       <div
@@ -326,7 +602,31 @@ function DraftCard({
           overflow: "hidden",
           textOverflow: "ellipsis",
         }}>
-          {draft.name}
+          {renaming ? (
+            <input
+              ref={renameRef}
+              value={renameVal}
+              onChange={e => setRenameVal(e.target.value)}
+              onBlur={commitRename}
+              onKeyDown={e => {
+                if (e.key === "Enter") commitRename();
+                if (e.key === "Escape") { setRenameVal(draft.name); setRenaming(false); }
+              }}
+              onClick={e => e.stopPropagation()}
+              style={{
+                width: "100%",
+                background: "rgba(124,58,237,0.12)",
+                border: "1px solid rgba(124,58,237,0.4)",
+                borderRadius: 6,
+                color: "#f1f1f6",
+                fontSize: 14,
+                fontWeight: 600,
+                padding: "2px 6px",
+                outline: "none",
+                fontFamily: "inherit",
+              }}
+            />
+          ) : draft.name}
         </div>
         {draft.prompt && (
           <div style={{
@@ -343,7 +643,7 @@ function DraftCard({
         )}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <span style={{ color: "rgba(241,241,246,0.4)", fontSize: 12 }}>
-            {timeAgo(draft.updated_at)}
+            {timeAgo(displayDate)}
           </span>
           <span style={{
             fontSize: 11,
@@ -411,6 +711,9 @@ function DraftCard({
                     e.stopPropagation();
                     setMenuOpen(false);
                     if (item.label === "Delete") onDelete(draft.id);
+                    else if (item.label === "Rename") setRenaming(true);
+                    else if (item.label === "Archive") onArchive(draft.id);
+                    else if (item.label === "Duplicate") onDuplicate(draft.id);
                   }}
                   style={{
                     display: "flex",
@@ -557,6 +860,33 @@ export default function HomePage() {
 
   function handleDeleteDraft(id: string) {
     setDrafts((prev) => prev.filter((d) => d.id !== id));
+  }
+
+  async function handleRenameDraft(id: string, name: string) {
+    setDrafts((prev) => prev.map((d) => (d.id === id ? { ...d, name } : d)));
+    await fetch(`/api/drafts/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "rename", name }),
+    });
+  }
+
+  async function handleArchiveDraft(id: string) {
+    setDrafts((prev) => prev.filter((d) => d.id !== id));
+    await fetch(`/api/drafts/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "setStatus", status: "archived" }),
+    });
+  }
+
+  async function handleDuplicateDraft(id: string) {
+    const res = await fetch(`/api/drafts/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "duplicate" }),
+    });
+    if (res.ok) fetchData();
   }
 
   // ── Quick tools ───────────────────────────────────────────────────────────────
@@ -1102,6 +1432,9 @@ export default function HomePage() {
                     draft={draft}
                     index={i}
                     onDelete={handleDeleteDraft}
+                    onRename={handleRenameDraft}
+                    onArchive={handleArchiveDraft}
+                    onDuplicate={handleDuplicateDraft}
                   />
                 ))}
               </div>

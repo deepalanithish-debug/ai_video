@@ -11,6 +11,7 @@ import type { Timeline } from "@/types/timeline";
 import type { UploadedClip, UploadedAudio } from "@/types/clips";
 import type { StudioCaption } from "@/types/captions";
 import type { TemplatePreset, BrandOverrides } from "./AssetPanel";
+import type { MusicTrack } from "@/types/music";
 import type { OutroTemplate } from "@/types/outro";
 import { asayaWorkspace } from "@/lib/workspaces/asaya";
 import { isVideoFile, isImageFile, isAudioFile } from "@/lib/media";
@@ -28,7 +29,6 @@ export default function EditorLayout() {
   const [renderProgress, setRenderProgress] = useState<string | null>(null);
   const [renderDownloadUrl, setRenderDownloadUrl] = useState<string | null>(null);
   const [renderError, setRenderError] = useState<string | null>(null);
-  const [showJSON, setShowJSON] = useState(false);
   const [isDemoMode, setIsDemoMode] = useState(false);
   const [lastEvaluation, setLastEvaluation] = useState<EvaluationData | null>(null);
 
@@ -194,6 +194,43 @@ export default function EditorLayout() {
         id: bgmIndex >= 0 ? layers[bgmIndex].id : uuidv4(),
         type: "bgm" as const, src: bgm.objectUrl,
         startTime: 0, endTime: prevTl.totalDuration, volume: 0.7, fadeIn: 0.5, fadeOut: 1,
+      };
+      if (bgmIndex >= 0) layers[bgmIndex] = bgmLayer; else layers.unshift(bgmLayer);
+      return { ...prevTl, audioLayers: layers };
+    });
+  }, []);
+
+  // Add a library or uploaded track to the BGM layer with optional trim points
+  const handleAddMusicToTimeline = useCallback((
+    track: MusicTrack,
+    trimStart?: number,
+    trimEnd?: number,
+  ) => {
+    const id = uuidv4();
+    const newTrack: UploadedAudio = {
+      id,
+      name: track.title,
+      objectUrl: track.previewUrl,
+      size: 0,
+      duration: track.duration,
+      trimStart,
+      trimEnd,
+    };
+    setAudioTracks(prev => [...prev, newTrack]);
+    setActiveAudioId(id);
+    setTimeline(prevTl => {
+      if (!prevTl) return prevTl;
+      const layers = [...(prevTl.audioLayers ?? [])];
+      const bgmIndex = layers.findIndex(l => l.type === "bgm");
+      const bgmLayer = {
+        id: bgmIndex >= 0 ? layers[bgmIndex].id : uuidv4(),
+        type: "bgm" as const,
+        src: track.previewUrl,
+        startTime: 0,
+        endTime: prevTl.totalDuration,
+        volume: 0.7,
+        fadeIn: 0.5,
+        fadeOut: 1,
       };
       if (bgmIndex >= 0) layers[bgmIndex] = bgmLayer; else layers.unshift(bgmLayer);
       return { ...prevTl, audioLayers: layers };
@@ -616,19 +653,6 @@ export default function EditorLayout() {
                 )}
                 Render
               </button>
-              <button
-                onClick={() => setShowJSON(!showJSON)}
-                style={{
-                  padding: "7px 11px", borderRadius: 7,
-                  border: `1px solid ${showJSON ? "rgba(124,58,237,0.5)" : "rgba(124,58,237,0.2)"}`,
-                  background: showJSON ? "rgba(124,58,237,0.15)" : "transparent",
-                  color: showJSON ? "#a78bfa" : "var(--text-muted)",
-                  fontSize: 12, fontWeight: 500, cursor: "pointer",
-                  transition: "all 0.15s ease",
-                }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = "rgba(124,58,237,0.5)"; e.currentTarget.style.color = "#a78bfa"; }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = showJSON ? "rgba(124,58,237,0.5)" : "rgba(124,58,237,0.2)"; e.currentTarget.style.color = showJSON ? "#a78bfa" : "var(--text-muted)"; }}
-              >JSON</button>
             </>
           )}
 
@@ -693,7 +717,8 @@ export default function EditorLayout() {
           clips={clips} audioTracks={audioTracks} activeAudioId={activeAudioId}
           timeline={timeline} activeSceneId={activeSceneId}
           onClipsUploaded={handleClipsUploaded} onAudioUploaded={handleAudioUploaded}
-          onSelectAudio={setActiveAudioId} onAssignClip={handleAssignClip}
+          onSelectAudio={setActiveAudioId} onAddMusicToTimeline={handleAddMusicToTimeline}
+          onAssignClip={handleAssignClip}
           onRemoveClip={handleRemoveClip} onTemplateSelect={handleTemplateSelect}
           brandOverrides={brandOverrides} onBrandOverridesChange={setBrandOverrides}
           onLoadGeneration={tl => handleLineupGenerated(tl, null, false)}
@@ -727,25 +752,6 @@ export default function EditorLayout() {
               showGrid={showGrid} showSafeZones={showSafeZones} showThirds={showThirds}
               outroConfig={outroConfig} outroSceneId={outroSceneId}
             />
-
-            {/* JSON overlay */}
-            {showJSON && timeline && (
-              <div style={{
-                position: "absolute", inset: 0, background: "var(--bg-panel)",
-                overflow: "auto", padding: 16, zIndex: 10, animation: "fadeIn 0.2s ease",
-              }}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12, alignItems: "center" }}>
-                  <div style={{ fontSize: 10, fontWeight: 600, color: "var(--accent)", letterSpacing: "0.06em" }}>LINEUP JSON</div>
-                  <button onClick={() => setShowJSON(false)}
-                    style={{ padding: "3px 8px", borderRadius: 4, border: "1px solid var(--border)", background: "transparent", color: "var(--text-secondary)", fontSize: 10, cursor: "pointer" }}>
-                    Close
-                  </button>
-                </div>
-                <pre style={{ fontSize: 10.5, color: "var(--text-secondary)", fontFamily: "var(--font-mono)", lineHeight: 1.6, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
-                  {JSON.stringify(timeline, null, 2)}
-                </pre>
-              </div>
-            )}
 
             {/* Render/export overlays */}
             {exportResult && <ExportResultBanner result={exportResult} onClose={() => setExportResult(null)} />}

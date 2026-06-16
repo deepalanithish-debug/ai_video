@@ -78,7 +78,7 @@ interface AssetPanelProps {
   showThirds?: boolean;
   onGuideToggle?: (g: "grid" | "safeZones" | "thirds") => void;
   // Music
-  onAddMusicToTimeline?: (track: MusicTrack) => void;
+  onAddMusicToTimeline?: (track: MusicTrack, trimStart?: number, trimEnd?: number) => void;
 }
 
 type NavTab = "media" | "transitions" | "text" | "music" | "brand" | "ai";

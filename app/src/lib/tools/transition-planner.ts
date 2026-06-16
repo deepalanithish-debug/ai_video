@@ -30,7 +30,7 @@ export interface TransitionPlannerInput {
 
 export interface SceneTransition {
   sceneId: string;
-  transitionType: "cut" | "fade" | "dissolve" | "cinematic-fade" | "whip-pan" | "dip-to-black";
+  transitionType: "cut" | "fade" | "dissolve" | "cinematic-fade" | "wipe-left" | "wipe-right" | "slide-left" | "slide-right" | "zoom-in" | "zoom-out";
   duration: number;
   rationale: string;
 }
@@ -89,12 +89,15 @@ SCENES:
 ${sceneList}
 
 Assign the best transition FROM each scene to the next based on the brief above.
+Valid transitionType values: "cut" | "fade" | "dissolve" | "cinematic-fade" | "wipe-left" | "wipe-right" | "slide-left" | "slide-right" | "zoom-in" | "zoom-out"
 Rules:
 - Last scene → no transition needed (set "cut")
-- If brief is conversational/interview/natural → prefer simple "cut" between speakers
-- fast-cuts brief → "cut" or "whip-pan"
-- cinematic/atmospheric brief → "cinematic-fade" or "dissolve"
-- Emotional moments: "dissolve" or "cinematic-fade"
+- If brief mentions a specific transition type, use it for most/all scenes
+- Conversational/interview/natural → prefer "cut"
+- Fast-paced, energetic → "cut" or "zoom-in"
+- Cinematic/atmospheric → "cinematic-fade" or "dissolve"
+- Emotional moments → "dissolve" or "cinematic-fade"
+- Travel/motion → "slide-left" or "wipe-right"
 - Default to "cut" when in doubt — clean cuts are always better than over-produced transitions
 
 Return ONLY JSON:

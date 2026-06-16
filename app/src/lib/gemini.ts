@@ -1,4 +1,4 @@
-import { GoogleAuth } from "google-auth-library";
+import crypto from "crypto";
 import type { BrandWorkspace } from "@/types/brand";
 import type { Timeline, LineupResponse } from "@/types/timeline";
 import { v4 as uuidv4 } from "uuid";
@@ -37,23 +37,58 @@ export interface ClipAssignment {
   trimEnd?: number;
 }
 
-export function getAuthClient() {
+// Self-signed JWT for Vertex AI — avoids calling oauth2.googleapis.com entirely.
+// Vertex AI accepts service account self-signed JWTs as bearer tokens (RS256).
+// Cloud Storage JSON API uses a different audience than Vertex AI
+export function createStorageJWT(): string {
   const clientEmail = process.env.GOOGLE_CLIENT_EMAIL!;
   const privateKey = (process.env.GOOGLE_PRIVATE_KEY ?? "").replace(/\\n/g, "\n");
 
-  return new GoogleAuth({
-    credentials: { client_email: clientEmail, private_key: privateKey },
-    scopes: ["https://www.googleapis.com/auth/cloud-platform"],
-    projectId: process.env.GOOGLE_PROJECT_ID,
-  });
+  const now = Math.floor(Date.now() / 1000);
+  const header = Buffer.from(JSON.stringify({ alg: "RS256", typ: "JWT" })).toString("base64url");
+  const claims = Buffer.from(JSON.stringify({
+    iss: clientEmail,
+    sub: clientEmail,
+    aud: "https://storage.googleapis.com/",
+    iat: now,
+    exp: now + 3600,
+  })).toString("base64url");
+
+  const signingInput = `${header}.${claims}`;
+  const signer = crypto.createSign("RSA-SHA256");
+  signer.update(signingInput);
+  const sig = signer.sign(privateKey).toString("base64url");
+  return `${signingInput}.${sig}`;
+}
+
+export function createVertexJWT(): string {
+  const clientEmail = process.env.GOOGLE_CLIENT_EMAIL!;
+  const privateKey = (process.env.GOOGLE_PRIVATE_KEY ?? "").replace(/\\n/g, "\n");
+  const location = process.env.GOOGLE_LOCATION ?? "us-central1";
+  const audience = `https://${location}-aiplatform.googleapis.com/`;
+
+  const now = Math.floor(Date.now() / 1000);
+  const header = Buffer.from(JSON.stringify({ alg: "RS256", typ: "JWT" })).toString("base64url");
+  const claims = Buffer.from(JSON.stringify({
+    iss: clientEmail,
+    sub: clientEmail,
+    aud: audience,
+    iat: now,
+    exp: now + 3600,
+  })).toString("base64url");
+
+  const signingInput = `${header}.${claims}`;
+  const signer = crypto.createSign("RSA-SHA256");
+  signer.update(signingInput);
+  const sig = signer.sign(privateKey).toString("base64url");
+  return `${signingInput}.${sig}`;
 }
 
 export async function geminiRequest(
   model: string,
   payload: Record<string, unknown>
 ): Promise<Record<string, unknown>> {
-  const auth = getAuthClient();
-  const token = await auth.getAccessToken();
+  const token = createVertexJWT();
 
   const res = await fetch(vertexUrl(model), {
     method: "POST",

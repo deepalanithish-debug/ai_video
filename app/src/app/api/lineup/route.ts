@@ -10,11 +10,12 @@ export const maxDuration = 300;
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { prompt, workspaceSlug, runQA = false, aspectRatio, geminiClips, brandOverrides } = body;
+    const { prompt, workspaceSlug, runQA = false, aspectRatio, geminiClips, brandOverrides, existingTimeline } = body;
     const hasClips = Array.isArray(geminiClips) && geminiClips.length > 0;
     const overrides = brandOverrides as BrandOverrides | undefined;
+    const isRefinement = Boolean(existingTimeline);
 
-    if (!prompt || typeof prompt !== "string" || prompt.trim().length < 10) {
+    if (!prompt || typeof prompt !== "string" || (!isRefinement && prompt.trim().length < 10)) {
       return NextResponse.json({ error: "Prompt must be at least 10 characters." }, { status: 400 });
     }
     if (!workspaceSlug || typeof workspaceSlug !== "string") {
@@ -33,9 +34,13 @@ export async function POST(req: NextRequest) {
       ? (geminiClips as GeminiClip[]).map((c, i) => ({ ...c, index: i }))
       : [];
 
+    const refinedPrompt = isRefinement
+      ? `REFINEMENT REQUEST — modify the existing timeline below based on the user's instruction. Preserve scene IDs, overall mood, style, and structure unless explicitly asked to change them. Only change what was requested.\n\nEXISTING TIMELINE:\n${JSON.stringify(existingTimeline, null, 2)}\n\nUSER INSTRUCTION: ${prompt.trim()}`
+      : prompt.trim();
+
     try {
       const result = await runAgentPipeline({
-        prompt: prompt.trim(),
+        prompt: refinedPrompt,
         brand: workspace,
         clips,
         aspectRatio,
@@ -63,23 +68,13 @@ export async function POST(req: NextRequest) {
 
     } catch (aiError) {
       const msg = aiError instanceof Error ? aiError.message : String(aiError);
-      const isQuotaOrAuth =
-        msg.includes("429") || msg.includes("quota") || msg.includes("RESOURCE_EXHAUSTED") ||
-        msg.includes("403") || msg.includes("401") || msg.includes("permission") ||
-        msg.includes("PERMISSION_DENIED") || msg.includes("suspended");
-      const isMalformed =
-        msg.includes("Missing timeline") || msg.includes("invalid JSON") ||
-        msg.includes("empty response") || msg.includes("Invalid lineup");
-
-      if (isQuotaOrAuth || isMalformed) {
-        return demoResponse(
-          prompt, workspace,
-          isQuotaOrAuth
-            ? "Gemini API quota not available. Showing a pre-built demo lineup."
-            : "Gemini returned an unexpected format. Showing demo lineup.",
-        );
-      }
-      throw aiError;
+      console.error("[lineup] pipeline error:", msg);
+      const reason = msg.includes("429") || msg.includes("quota") || msg.includes("RESOURCE_EXHAUSTED")
+        ? "Gemini API quota not available. Showing a pre-built demo lineup."
+        : msg.includes("403") || msg.includes("401") || msg.includes("permission") || msg.includes("PERMISSION_DENIED")
+          ? "API auth issue. Showing demo lineup."
+          : `Pipeline error: ${msg.slice(0, 80)}. Showing demo lineup.`;
+      return demoResponse(prompt, workspace, reason);
     }
 
   } catch (error) {

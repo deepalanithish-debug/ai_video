@@ -96,41 +96,45 @@ export async function runAgentPipeline(params: {
   const trace: AgentStep[] = [];
   const toolsExecuted: string[] = [];
 
-  // ── Step 1: Planner ─────────────────────────────────────────────────────────
-  let t0 = Date.now();
-  const plan = await runPlanner({
-    prompt,
-    hasClips,
-    clipCount: clips.length,
-    workspaceSlug,
-    brandName: brand.name,
-    brandKeywords: brand.styleKeywords,
-  });
+  // ── Step 1: Planner + Brief Interpreter in parallel ─────────────────────────
+  // These two are independent — brief interpreter only reads the prompt text,
+  // planner only reads metadata. Running together saves one round-trip latency.
+  const phase1Start = Date.now();
+  const [plan, briefResult] = await Promise.all([
+    runPlanner({
+      prompt,
+      hasClips,
+      clipCount: clips.length,
+      workspaceSlug,
+      brandName: brand.name,
+      brandKeywords: brand.styleKeywords,
+    }),
+    interpretBrief(prompt).catch(() => null as StructuredBrief | null),
+  ]);
+  const phase1Ms = Date.now() - phase1Start;
+
   trace.push({
     stage: "Planner",
     model: MODELS.PLANNER,
-    durationMs: Date.now() - t0,
+    durationMs: phase1Ms,
     decision: `→ ${plan.cluster}/${plan.mode} | workflow: ${plan.workflowId} | tools: [${plan.tools.map(t => t.toolName).join(", ")}]`,
   });
   toolsExecuted.push("planner");
 
-  const workflow = getWorkflow(plan.workflowId) ?? getDefaultWorkflow(plan.cluster);
-  const ctx: ToolContext = { runId, workspaceSlug, cluster: plan.cluster, mode: plan.mode };
-
-  // ── Step 2: Brief Interpreter — understand intent before touching video ─────
-  t0 = Date.now();
-  let structuredBrief: StructuredBrief | undefined;
-  try {
-    structuredBrief = await interpretBrief(prompt);
+  const structuredBrief: StructuredBrief | undefined = briefResult ?? undefined;
+  if (structuredBrief) {
     trace.push({
       stage: "Brief Interpreter",
-      model: "gemini-2.5-pro",
-      durationMs: Date.now() - t0,
+      model: "gemini-2.5-flash",
+      durationMs: phase1Ms,
       decision: `${structuredBrief.coreIntent} | pacing: ${structuredBrief.pacingIntent} | ${structuredBrief.sceneOrder.length} scene directives`,
     });
-  } catch {
-    trace.push({ stage: "Brief Interpreter (skipped)", model: "—", durationMs: Date.now() - t0, decision: "fallback to raw prompt" });
+  } else {
+    trace.push({ stage: "Brief Interpreter (skipped)", model: "—", durationMs: phase1Ms, decision: "fallback to raw prompt" });
   }
+
+  const workflow = getWorkflow(plan.workflowId) ?? getDefaultWorkflow(plan.cluster);
+  const ctx: ToolContext = { runId, workspaceSlug, cluster: plan.cluster, mode: plan.mode };
   const enrichedPrompt = structuredBrief
     ? `${prompt}\n\n━━━ STRUCTURED INTERPRETATION ━━━\n${formatBriefForPrompt(structuredBrief)}`
     : prompt;
@@ -150,7 +154,7 @@ export async function runAgentPipeline(params: {
   let musicSpec = undefined;
 
   for (const { toolName, reason } of plan.tools) {
-    t0 = Date.now();
+    let t0 = Date.now();
 
     try {
       if (toolName === "video-analysis" && hasClips) {
@@ -207,27 +211,54 @@ export async function runAgentPipeline(params: {
         suggestions = result.data.suggestions;
         clipAssignments = result.data.clipAssignments;
 
-        // Guard 1: deduplicate — each clip can only appear once; keep first occurrence
-        if (timeline.scenes && hasClips) {
-          const seenClipIdx = new Set<number>();
-          timeline.scenes = timeline.scenes.filter((scene, sceneIdx) => {
-            const assignment = clipAssignments.find(a => a.sceneId === scene.id);
-            const clipIdx = assignment?.clipIndex ?? sceneIdx;
-            if (seenClipIdx.has(clipIdx)) return false;
-            seenClipIdx.add(clipIdx);
-            return true;
-          });
-        }
+        if (hasClips && timeline.scenes) {
+          // Guard A: deduplicate scene IDs — model sometimes writes the same UUID twice.
+          // If two scenes share an ID, the second one gets a fresh UUID and its
+          // clipAssignment entry (if any) is updated to the new ID.
+          const seenSceneIds = new Set<string>();
+          for (const scene of timeline.scenes) {
+            if (seenSceneIds.has(scene.id)) {
+              const oldId = scene.id;
+              const newId = uuidv4();
+              scene.id = newId;
+              // patch clipAssignments that referenced the old duplicate ID
+              for (const a of clipAssignments) {
+                if (a.sceneId === oldId && !seenSceneIds.has(newId)) a.sceneId = newId;
+              }
+            }
+            seenSceneIds.add(scene.id);
+          }
 
-        // Guard 2: trim excess scenes — never more than the number of uploaded clips
-        if (timeline.scenes && hasClips) {
+          // Guard B: fix duplicate clipIndex — model sometimes assigns the same clip to
+          // multiple scenes. Reassign each duplicate to the next unused clip index.
+          const usedClipIndices = new Set<number>();
+          for (const a of clipAssignments) {
+            if (!usedClipIndices.has(a.clipIndex)) {
+              usedClipIndices.add(a.clipIndex);
+            } else {
+              let next = 0;
+              while (usedClipIndices.has(next) && next < clips.length) next++;
+              if (next < clips.length) { a.clipIndex = next; usedClipIndices.add(next); }
+            }
+          }
+
+          // Guard C: ensure EVERY scene has exactly one clipAssignment.
+          // If a scene is missing from clipAssignments, assign the next available clip.
+          const availableClipIndices = clips.map((_, i) => i).filter(i => !usedClipIndices.has(i));
+          for (const scene of timeline.scenes) {
+            if (!clipAssignments.some(a => a.sceneId === scene.id) && availableClipIndices.length > 0) {
+              const nextIdx = availableClipIndices.shift()!;
+              clipAssignments.push({ sceneId: scene.id, clipIndex: nextIdx, trimStart: scene.clipTrimStart ?? 0, trimEnd: scene.clipTrimEnd });
+              usedClipIndices.add(nextIdx);
+            }
+          }
+
+          // Guard 1: trim excess scenes — never more than the number of uploaded clips
           if (timeline.scenes.length > clips.length) {
             timeline.scenes = timeline.scenes.slice(0, clips.length);
           }
-        }
 
-        // Guard 3: clamp clipTrimEnd to exact clip duration — only cap the end, preserve trimStart
-        if (timeline.scenes && hasClips) {
+          // Guard 3: clamp clipTrimEnd to exact clip duration — only cap the end, preserve trimStart
           timeline.scenes.forEach((scene, sceneIdx) => {
             const assignment = clipAssignments.find(a => a.sceneId === scene.id);
             const clipIdx = assignment?.clipIndex ?? sceneIdx;
@@ -254,42 +285,81 @@ export async function runAgentPipeline(params: {
         });
         toolsExecuted.push(toolName);
 
-      } else if (toolName === "transition-planner" && timeline) {
-        const result = await transitionPlannerTool.execute({
-          timeline,
+      }
+      // transition-planner, caption-generator, music-selector are handled below in parallel
+
+    } catch (toolError) {
+      const errMsg = toolError instanceof Error ? toolError.message : String(toolError);
+      saveToolExecution({ runId, toolName, durationMs: Date.now() - t0, success: false, errorMsg: errMsg });
+      if (toolName === "timeline-generator") throw toolError;
+      trace.push({ stage: `${toolName} (failed)`, model: "—", durationMs: Date.now() - t0, decision: errMsg.slice(0, 80) });
+    }
+  }
+
+  if (!timeline) throw new Error("timeline-generator was not reached or failed");
+
+  // ── Step 3b: Post-timeline polish tools — run in parallel ──────────────────
+  // transition-planner, caption-generator, music-selector all read from
+  // timeline but don't depend on each other, so they can run concurrently.
+  const POST_TIMELINE = ["transition-planner", "caption-generator", "music-selector"] as const;
+  const postTools = plan.tools.filter(t => POST_TIMELINE.includes(t.toolName as typeof POST_TIMELINE[number]));
+
+  if (postTools.length > 0) {
+    const parallelStart = Date.now();
+    const sceneEnergies = (timeline.scenes ?? []).map(s => `${s.label}(${s.mood ?? "neutral"})`).join(", ");
+
+    const postResults = await Promise.allSettled(postTools.map(async ({ toolName }) => {
+      const t = Date.now();
+      if (toolName === "transition-planner") {
+        return { toolName, result: await transitionPlannerTool.execute({
+          timeline: timeline!,
           clusterPacingStyle: workflow.clusterConfig.pacingStyle,
-          platform: plan.platform,
-          tone: plan.tone,
-          originalPrompt: enrichedPrompt,
-        }, ctx);
-        saveToolExecution({ runId, toolName, modelUsed: result.modelUsed, durationMs: result.durationMs, success: result.success });
-        if (result.success && Array.isArray(result.data?.transitions) && result.data.transitions.length && timeline.scenes) {
-          for (const t of result.data.transitions) {
+          platform: plan.platform, tone: plan.tone, originalPrompt: enrichedPrompt,
+        }, ctx), durationMs: Date.now() - t };
+      }
+      if (toolName === "caption-generator") {
+        return { toolName, result: await captionGeneratorTool.execute({
+          timeline: timeline!,
+          captionStyle: workflow.clusterConfig.captionStyle,
+          maxCharsPerLine: brand.captionStyle.maxCharsPerLine,
+          platform: plan.platform, tone: plan.tone, brandName: brand.name, originalPrompt: enrichedPrompt,
+        }, ctx), durationMs: Date.now() - t };
+      }
+      if (toolName === "music-selector") {
+        return { toolName, result: await musicSelectorTool.execute({
+          cluster: plan.cluster, tone: plan.tone, platform: plan.platform,
+          targetDuration: timeline!.totalDuration ?? 30, sceneCount: timeline!.scenes?.length ?? 0,
+          energyProfile: sceneEnergies, brandName: brand.name,
+        }, ctx), durationMs: Date.now() - t };
+      }
+      return null;
+    }));
+
+    for (const settled of postResults) {
+      if (settled.status === "rejected") continue;
+      const payload = settled.value;
+      if (!payload) continue;
+      const { toolName, result, durationMs } = payload;
+
+      saveToolExecution({ runId, toolName, modelUsed: result.modelUsed, durationMs, success: result.success });
+      toolsExecuted.push(toolName);
+
+      if (toolName === "transition-planner") {
+        const data = result.data as Awaited<ReturnType<typeof transitionPlannerTool.execute>>["data"];
+        if (result.success && Array.isArray(data?.transitions) && timeline.scenes) {
+          for (const t of data!.transitions) {
             const scene = timeline.scenes.find(s => s.id === t.sceneId);
             if (scene) scene.transition = { type: t.transitionType as "cut" | "fade" | "dissolve" | "cinematic-fade", duration: t.duration };
           }
         }
         trace.push({
-          stage: "Transition Planner",
-          model: result.modelUsed ?? MODELS.TRANSITION_PLANNER,
-          durationMs: result.durationMs,
-          decision: result.data ? `flow score: ${result.data.overallFlowScore} | ${result.data.pacingNotes.slice(0, 60)}` : "original transitions kept",
+          stage: "Transition Planner", model: result.modelUsed ?? MODELS.TRANSITION_PLANNER, durationMs,
+          decision: data ? `flow score: ${data.overallFlowScore} | ${data.pacingNotes.slice(0, 60)}` : "original transitions kept",
         });
-        toolsExecuted.push(toolName);
-
-      } else if (toolName === "caption-generator" && timeline) {
-        const result = await captionGeneratorTool.execute({
-          timeline,
-          captionStyle: workflow.clusterConfig.captionStyle,
-          maxCharsPerLine: brand.captionStyle.maxCharsPerLine,
-          platform: plan.platform,
-          tone: plan.tone,
-          brandName: brand.name,
-          originalPrompt: enrichedPrompt,
-        }, ctx);
-        saveToolExecution({ runId, toolName, modelUsed: result.modelUsed, durationMs: result.durationMs, success: result.success });
-        if (result.success && Array.isArray(result.data?.scenes) && result.data.scenes.length && timeline.scenes) {
-          for (const sceneCaps of result.data.scenes) {
+      } else if (toolName === "caption-generator") {
+        const data = result.data as Awaited<ReturnType<typeof captionGeneratorTool.execute>>["data"];
+        if (result.success && Array.isArray(data?.scenes) && timeline.scenes) {
+          for (const sceneCaps of data!.scenes) {
             const scene = timeline.scenes.find(s => s.id === sceneCaps.sceneId);
             if (scene && Array.isArray(sceneCaps.captions) && sceneCaps.captions.length > 0) {
               scene.captions = sceneCaps.captions.map(c => ({
@@ -300,55 +370,30 @@ export async function runAgentPipeline(params: {
           }
         }
         trace.push({
-          stage: "Caption Generator",
-          model: result.modelUsed ?? MODELS.CAPTION_GENERATOR,
-          durationMs: result.durationMs,
-          decision: result.data ? result.data.captionNotes.slice(0, 80) : "original captions kept",
+          stage: "Caption Generator", model: result.modelUsed ?? MODELS.CAPTION_GENERATOR, durationMs,
+          decision: data ? data.captionNotes.slice(0, 80) : "original captions kept",
         });
-        toolsExecuted.push(toolName);
-
       } else if (toolName === "music-selector") {
-        const sceneEnergies = (timeline?.scenes ?? []).map(s => `${s.label}(${s.mood ?? "neutral"})`).join(", ");
-        const result = await musicSelectorTool.execute({
-          cluster: plan.cluster,
-          tone: plan.tone,
-          platform: plan.platform,
-          targetDuration: timeline?.totalDuration ?? 30,
-          sceneCount: timeline?.scenes?.length ?? 0,
-          energyProfile: sceneEnergies,
-          brandName: brand.name,
-        }, ctx);
-        saveToolExecution({ runId, toolName, modelUsed: result.modelUsed, durationMs: result.durationMs, success: result.success });
-        if (result.success && result.data) {
-          musicSpec = { genre: result.data.primary.genre, searchKeywords: result.data.primary.searchKeywords, editorialNote: result.data.primary.editorialNote };
+        const data = result.data as Awaited<ReturnType<typeof musicSelectorTool.execute>>["data"];
+        if (result.success && data) {
+          musicSpec = { genre: data.primary.genre, searchKeywords: data.primary.searchKeywords, editorialNote: data.primary.editorialNote };
         }
         trace.push({
-          stage: "Music Selector",
-          model: result.modelUsed ?? MODELS.MUSIC_SELECTOR,
-          durationMs: result.durationMs,
-          decision: result.data ? `${result.data.primary.genre} | ${result.data.primary.tempo} | ${result.data.primary.searchKeywords[0]}` : "no spec",
+          stage: "Music Selector", model: result.modelUsed ?? MODELS.MUSIC_SELECTOR, durationMs,
+          decision: data ? `${data.primary.genre} | ${data.primary.tempo} | ${data.primary.searchKeywords[0]}` : "no spec",
         });
-        toolsExecuted.push(toolName);
       }
-
-    } catch (toolError) {
-      const errMsg = toolError instanceof Error ? toolError.message : String(toolError);
-      saveToolExecution({ runId, toolName, durationMs: Date.now() - t0, success: false, errorMsg: errMsg });
-      // Timeline generator failure is fatal; others are non-fatal
-      if (toolName === "timeline-generator") throw toolError;
-      trace.push({ stage: `${toolName} (failed)`, model: "—", durationMs: Date.now() - t0, decision: errMsg.slice(0, 80) });
     }
+    console.log(`[pipeline] post-timeline parallel block: ${Date.now() - parallelStart}ms for ${postTools.length} tools`);
   }
 
-  if (!timeline) throw new Error("timeline-generator was not reached or failed");
-
-  // ── Step 3: Evaluate ────────────────────────────────────────────────────────
-  t0 = Date.now();
+  // ── Step 4: Evaluate ────────────────────────────────────────────────────────
+  const evalStart = Date.now();
   const evalResult = await runEvaluator({ timeline, brand, workflow, originalPrompt: enrichedPrompt });
   trace.push({
     stage: "Evaluator",
     model: evalResult.evalModel,
-    durationMs: Date.now() - t0,
+    durationMs: Date.now() - evalStart,
     decision: `score: ${evalResult.overallScore}/100 | ${evalResult.passedQA ? "PASSED" : "FAILED"} | ${evalResult.issues.length} issue(s)`,
   });
 

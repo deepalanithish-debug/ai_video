@@ -42,7 +42,7 @@ async function saveBase64(dataUrl: string, ext: string, dir: string): Promise<st
   return file;
 }
 
-function ratioDimensions(r: string): [number, number] {
+export function ratioDimensions(r: string): [number, number] {
   switch (r) {
     case "16:9": return [1920, 1080];
     case "1:1":  return [1080, 1080];
@@ -52,7 +52,7 @@ function ratioDimensions(r: string): [number, number] {
   }
 }
 
-function effectToVfFilter(effect: string): string {
+export function effectToVfFilter(effect: string): string {
   const e = effect.toLowerCase().replace(/[\s_-]+/g, "-");
   if (e.includes("black-and-white") || e.includes("grayscale") || e.includes("bw")) return "hue=s=0";
   if (e.includes("sepia") || e.includes("vintage")) return "colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131";
@@ -70,7 +70,7 @@ function effectToVfFilter(effect: string): string {
 }
 
 // atempo only accepts 0.5–2.0 per node; chain for values outside that range
-function buildAtempoChain(speed: number): string {
+export function buildAtempoChain(speed: number): string {
   const filters: string[] = [];
   let r = speed;
   while (r > 2.0 + 1e-6) { filters.push("atempo=2.0"); r /= 2.0; }
@@ -80,7 +80,7 @@ function buildAtempoChain(speed: number): string {
 }
 
 // Map timeline transition type → ffmpeg xfade transition name (empty = cut)
-function toXfadeType(type: string): string {
+export function toXfadeType(type: string): string {
   switch (type) {
     case "fade":           return "fade";
     case "cinematic-fade": return "fade";

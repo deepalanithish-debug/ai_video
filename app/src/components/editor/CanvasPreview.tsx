@@ -147,6 +147,19 @@ const SceneVisual = memo(function SceneVisual({
     }
   }, [isPlaying, isMuted, scene?.playbackSpeed]);
 
+  // When the preload pool already decoded this clip, readyState >= 2 on mount
+  // and onLoadedData won't fire — so seek to trimStart immediately.
+  useEffect(() => {
+    const vid = videoRef.current;
+    if (!vid || !scene?.clipSrc) return;
+    if (vid.readyState >= 2) {
+      const ts = scene.clipTrimStart ?? 0;
+      vid.playbackRate = scene.playbackSpeed ?? 1;
+      if (ts > 0) vid.currentTime = ts;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   if (!scene) return null;
 
   const hasClip = !!scene.clipSrc;
@@ -177,7 +190,7 @@ const SceneVisual = memo(function SceneVisual({
           onLoadedData={(e) => {
             const v = e.currentTarget;
             v.playbackRate = playbackRate;
-            v.currentTime = trimStart > 0 ? trimStart : 0.01;
+            if (trimStart > 0) v.currentTime = trimStart;
           }}
           onTimeUpdate={(e) => {
             const v = e.currentTarget;
@@ -329,11 +342,18 @@ export default function CanvasPreview({
   const [volume, setVolume] = useState(0.7);
 
   // BGM source — from uploaded audio or timeline layer
+  const activeBgmTrack =
+    audioTracks.find((t) => t.id === activeAudioId)
+    ?? audioTracks[0]
+    ?? null;
   const bgmSrc =
-    audioTracks.find((t) => t.id === activeAudioId)?.objectUrl
-    ?? audioTracks[0]?.objectUrl
+    activeBgmTrack?.objectUrl
     ?? timeline?.audioLayers?.find((l) => l.type === "bgm" && l.src)?.src
     ?? null;
+  // Trim points set by the user in the music panel's drag selector
+  const bgmTrimStart = activeBgmTrack?.trimStart ?? 0;
+  const bgmTrimEndRef = useRef<number | undefined>(activeBgmTrack?.trimEnd);
+  bgmTrimEndRef.current = activeBgmTrack?.trimEnd;
 
   // Keep a ref so the play effect can read currentTime without adding it to deps
   const currentTimeRef = useRef(0);
@@ -349,9 +369,11 @@ export default function CanvasPreview({
     bgm.volume = isMuted ? 0 : volume;
 
     if (isPlaying) {
-      // Snap BGM to current timeline position so it stays in sync after seeks/stops
+      // Snap BGM to current timeline position, respecting trimStart/trimEnd
       if (bgm.duration && isFinite(bgm.duration)) {
-        bgm.currentTime = currentTimeRef.current % bgm.duration;
+        const trimEnd = bgmTrimEndRef.current ?? bgm.duration;
+        const loopLen = Math.max(0.1, trimEnd - bgmTrimStart);
+        bgm.currentTime = bgmTrimStart + (currentTimeRef.current % loopLen);
       }
       if (bgm.paused) {
         const p = bgm.play();
@@ -365,7 +387,7 @@ export default function CanvasPreview({
       const settle = bgmPlayPromiseRef.current ?? Promise.resolve();
       settle.then(() => { bgm.pause(); }).catch(() => { bgm.pause(); });
     }
-  }, [isPlaying, bgmSrc, isMuted, volume]);
+  }, [isPlaying, bgmSrc, isMuted, volume, bgmTrimStart]);
 
   // Resolve which scene to display
   const resolved = timeline ? resolveScene(timeline, currentTime) : null;
@@ -464,6 +486,16 @@ export default function CanvasPreview({
   const captionColor = brandOverrides?.primaryColor ?? "#f5edd6";
   const scenes = timeline?.scenes ?? [];
 
+  // Preload the next 2 video clips while current scene plays to eliminate inter-scene gaps.
+  // Browsers share decoded media data for the same blob URL across elements, so when
+  // SceneVisual mounts with the same src, loadeddata fires near-instantly.
+  const _preloadIdx = scenes.findIndex(s => s.id === displayScene?.id);
+  const _preloadPool = scenes.slice(_preloadIdx + 1, _preloadIdx + 3).filter(s => {
+    if (!s.clipSrc) return false;
+    const ct = s.clipType ?? (/\.(jpg|jpeg|png|gif|webp|heic)(\?|$)/i.test(s.clipSrc) ? "image" : "video");
+    return ct === "video";
+  });
+
   return (
     <div style={{
       minHeight: "100%", background: "var(--bg-base)",
@@ -480,6 +512,26 @@ export default function CanvasPreview({
           style={{ display: "none" }}
         />
       )}
+
+      {/* Hidden preload pool — pre-decodes upcoming clips so SceneVisual loads instantly */}
+      {_preloadPool.map(s => (
+        <video
+          key={`preload-${s.id}`}
+          src={s.clipSrc ?? undefined}
+          preload="auto"
+          muted
+          playsInline
+          style={{
+            position: "absolute",
+            left: -9999,
+            top: -9999,
+            width: 1,
+            height: 1,
+            opacity: 0,
+            pointerEvents: "none",
+          }}
+        />
+      ))}
 
       {/* Subtle glow */}
       <div style={{

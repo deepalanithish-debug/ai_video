@@ -262,9 +262,9 @@ export default function TimelinePanel({
         </div>
 
         {/* Video track */}
-        <div style={{ display: "flex", alignItems: "center", gap: 0 }} ref={trackRef}>
-          <TrackLabel>V</TrackLabel>
-          <div style={{ position: "relative", height: 48, flexShrink: 0, width: totalDuration * pixelsPerSecond }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 0 }} ref={trackRef}>
+          <TrackLabel style={{ paddingTop: 10 }}>V</TrackLabel>
+          <div style={{ position: "relative", height: (timeline.scenes ?? []).some(s => !!(s.clipSrc ?? clips.find(c => c.assignedToSceneId === s.id))) ? 72 : 48, flexShrink: 0, width: totalDuration * pixelsPerSecond }}>
             {(timeline.scenes ?? []).map((scene, i) => {
               const scenes = timeline.scenes ?? [];
               const startTime = scenes.slice(0, i).reduce((sum, s) => sum + s.duration, 0);
@@ -313,7 +313,7 @@ export default function TimelinePanel({
                   position: "absolute",
                   left: boundaryTime * pixelsPerSecond,
                   top: 0,
-                  transform: "translateX(-50%)",
+                  transform: "translateX(-100%)",
                   zIndex: 5,
                   pointerEvents: "auto",
                 }}>
@@ -891,8 +891,8 @@ function TransitionConnector({
         onClick={(e) => { e.stopPropagation(); onOpenLibrary(); }}
         title={`Transition: ${currentType} — click to edit`}
         style={{
-          height: 24, borderRadius: 12, flexShrink: 0, padding: "0 8px",
-          minWidth: 40,
+          height: 22, borderRadius: 11, flexShrink: 0, padding: "0 6px",
+          minWidth: 32,
           background: isNonCut ? "rgba(124,58,237,0.15)" : "rgba(13,13,34,0.8)",
           border: `1.5px solid ${isNonCut ? "rgba(124,58,237,0.45)" : "rgba(124,58,237,0.15)"}`,
           color: isNonCut ? "#a78bfa" : "var(--text-muted)",

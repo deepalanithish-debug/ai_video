@@ -48,7 +48,7 @@ export const ugcAdsWorkflow: WorkflowDefinition = {
 
   clusterConfig: {
     pacingStyle: "fast-cuts",
-    defaultTransitions: ["cut", "whip-pan", "dissolve"],
+    defaultTransitions: ["cut", "zoom-in", "dissolve"],
     captionStyle: "punchy",
     colorGradeDefault: "vibrant",
     sceneCountRange: [4, 8],

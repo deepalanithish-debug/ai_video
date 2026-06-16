@@ -103,21 +103,319 @@ function WaveformBars({ waveform, isPlaying }: { waveform: number[]; isPlaying: 
   );
 }
 
+/* ─── Time format helper ─────────────────────────────────────────────────────── */
+function fmtSec(s: number): string {
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60);
+  return `${m}:${String(sec).padStart(2, "0")}`;
+}
+
+/* ─── TrimSelector — drag-to-select waveform with live playback ──────────────── */
+function TrimSelector({
+  track,
+  onConfirm,
+  onCancel,
+}: {
+  track: MusicTrack;
+  onConfirm: (trimStart: number, trimEnd: number) => void;
+  onCancel: () => void;
+}) {
+  const duration = Math.max(track.duration, 1);
+  const [selStart, setSelStart] = useState(0);
+  const [selEnd, setSelEnd] = useState(1);
+  const [playPos, setPlayPos] = useState(0);
+  const [isLivePlaying, setIsLivePlaying] = useState(false);
+  const waveRef = useRef<HTMLDivElement>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const isDraggingRef = useRef(false);
+  const dragModeRef = useRef<"left" | "right" | "body" | "new">("new");
+  const dragStartFracRef = useRef(0);
+  // snapshot refs so document listeners don't close over stale state
+  const selStartRef = useRef(0);
+  const selEndRef = useRef(1);
+  selStartRef.current = selStart;
+  selEndRef.current = selEnd;
+
+  useEffect(() => {
+    const audio = new Audio(track.previewUrl);
+    audio.preload = "auto";
+    audio.volume = 0.65;
+    audio.onended = () => setIsLivePlaying(false);
+    audioRef.current = audio;
+    return () => { audio.pause(); audio.src = ""; audioRef.current = null; };
+  }, [track.previewUrl]);
+
+  // rAF loop: track playback cursor + auto-stop at selEnd
+  useEffect(() => {
+    if (!isLivePlaying) return;
+    const loop = () => {
+      const audio = audioRef.current;
+      if (audio && audio.duration) {
+        const pos = audio.currentTime / audio.duration;
+        setPlayPos(pos);
+        if (!isDraggingRef.current && audio.currentTime >= selEndRef.current * duration) {
+          audio.pause();
+          setIsLivePlaying(false);
+          return;
+        }
+      }
+      rafRef.current = requestAnimationFrame(loop);
+    };
+    rafRef.current = requestAnimationFrame(loop);
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+  }, [isLivePlaying, duration]);
+
+  const getFrac = useCallback((clientX: number): number => {
+    const rect = waveRef.current?.getBoundingClientRect();
+    if (!rect || rect.width === 0) return 0;
+    return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+  }, []);
+
+  const seekAndPlay = useCallback((frac: number) => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.currentTime = frac * duration;
+    if (audio.paused) { audio.play().catch(() => {}); setIsLivePlaying(true); }
+  }, [duration]);
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const frac = getFrac(e.clientX);
+    const nearLeft = Math.abs(frac - selStartRef.current) < 0.05;
+    const nearRight = Math.abs(frac - selEndRef.current) < 0.05;
+    const inSel = frac > selStartRef.current && frac < selEndRef.current;
+    if (nearLeft) { dragModeRef.current = "left"; }
+    else if (nearRight) { dragModeRef.current = "right"; }
+    else if (inSel) { dragModeRef.current = "body"; dragStartFracRef.current = frac; }
+    else { dragModeRef.current = "new"; dragStartFracRef.current = frac; setSelStart(frac); setSelEnd(frac); }
+    isDraggingRef.current = true;
+    seekAndPlay(frac);
+  }, [getFrac, seekAndPlay]);
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!isDraggingRef.current) return;
+      const frac = getFrac(e.clientX);
+      const mode = dragModeRef.current;
+      if (mode === "left") {
+        setSelStart(Math.min(frac, selEndRef.current - 0.02));
+      } else if (mode === "right") {
+        setSelEnd(Math.max(frac, selStartRef.current + 0.02));
+      } else if (mode === "body") {
+        const delta = frac - dragStartFracRef.current;
+        dragStartFracRef.current = frac;
+        const len = selEndRef.current - selStartRef.current;
+        const ns = Math.max(0, Math.min(1 - len, selStartRef.current + delta));
+        setSelStart(ns);
+        setSelEnd(ns + len);
+      } else {
+        // new selection
+        const anchor = dragStartFracRef.current;
+        if (frac >= anchor) { setSelEnd(frac); }
+        else { setSelStart(frac); setSelEnd(anchor); }
+      }
+      const audio = audioRef.current;
+      if (audio) audio.currentTime = frac * duration;
+    };
+    const onUp = () => { isDraggingRef.current = false; };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+    return () => { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
+  }, [getFrac, duration]);
+
+  // Interpolate waveform to BAR_COUNT bars
+  const BAR_COUNT = 80;
+  const bars = useMemo(() => {
+    const src = track.waveform;
+    return Array.from({ length: BAR_COUNT }, (_, i) => {
+      const t = (i / (BAR_COUNT - 1)) * (src.length - 1);
+      const lo = Math.floor(t);
+      const hi = Math.min(lo + 1, src.length - 1);
+      return src[lo] + (src[hi] - src[lo]) * (t - lo);
+    });
+  }, [track.waveform]);
+
+  const startSec = selStart * duration;
+  const endSec = selEnd * duration;
+  const selectedDur = endSec - startSec;
+
+  return (
+    <div style={{
+      marginTop: 8, padding: "10px 10px 12px",
+      background: "rgba(0,0,0,0.3)", borderRadius: 8,
+      border: "1px solid rgba(124,58,237,0.25)",
+    }}>
+      <div style={{ fontSize: 10, color: "#7c3aed", letterSpacing: "0.1em", fontWeight: 700, marginBottom: 7 }}>
+        DRAG TO SELECT · LIVE PREVIEW
+      </div>
+
+      {/* Waveform */}
+      <div
+        ref={waveRef}
+        onMouseDown={handleMouseDown}
+        style={{
+          position: "relative", height: 52,
+          background: "rgba(255,255,255,0.02)",
+          borderRadius: 6, overflow: "hidden",
+          cursor: "ew-resize", userSelect: "none",
+          border: "1px solid rgba(124,58,237,0.12)",
+        }}
+      >
+        <svg
+          width="100%" height="100%"
+          viewBox={`0 0 ${BAR_COUNT * 3} 52`}
+          preserveAspectRatio="none"
+          style={{ position: "absolute", inset: 0, display: "block" }}
+        >
+          {bars.map((v, i) => {
+            const barH = Math.max(2, v * 40);
+            const x = i * 3 + 0.8;
+            const y = (52 - barH) / 2;
+            const frac = i / BAR_COUNT;
+            const inSel = frac >= selStart && frac <= selEnd;
+            return (
+              <rect key={i} x={x} y={y} width={1.5} height={barH}
+                fill={inSel ? "#7c3aed" : "rgba(255,255,255,0.12)"}
+                rx={0.7}
+                style={inSel && isLivePlaying ? {
+                  transformOrigin: `${x + 0.75}px ${y + barH / 2}px`,
+                  animation: `waveBar ${0.35 + (i % 5) * 0.1}s ease-in-out infinite`,
+                } : undefined}
+              />
+            );
+          })}
+        </svg>
+
+        {/* Selection fill */}
+        <div style={{
+          position: "absolute", top: 0, bottom: 0,
+          left: `${selStart * 100}%`,
+          width: `${(selEnd - selStart) * 100}%`,
+          background: "rgba(124,58,237,0.18)",
+          pointerEvents: "none",
+        }} />
+
+        {/* Left handle */}
+        <div style={{
+          position: "absolute", top: 0, bottom: 0, width: 3,
+          left: `${selStart * 100}%`,
+          background: "#a78bfa", pointerEvents: "none", zIndex: 2,
+          borderRadius: "3px 0 0 3px",
+        }}>
+          <div style={{
+            position: "absolute", top: "50%", left: "50%",
+            transform: "translate(-50%, -50%)",
+            width: 9, height: 9, borderRadius: "50%",
+            background: "#a78bfa", border: "2px solid #fff",
+          }} />
+        </div>
+
+        {/* Right handle */}
+        <div style={{
+          position: "absolute", top: 0, bottom: 0, width: 3,
+          left: `${selEnd * 100}%`, transform: "translateX(-100%)",
+          background: "#a78bfa", pointerEvents: "none", zIndex: 2,
+          borderRadius: "0 3px 3px 0",
+        }}>
+          <div style={{
+            position: "absolute", top: "50%", left: "50%",
+            transform: "translate(-50%, -50%)",
+            width: 9, height: 9, borderRadius: "50%",
+            background: "#a78bfa", border: "2px solid #fff",
+          }} />
+        </div>
+
+        {/* Playback cursor */}
+        {isLivePlaying && (
+          <div style={{
+            position: "absolute", top: 0, bottom: 0, width: 2,
+            left: `${playPos * 100}%`,
+            background: "rgba(255,255,255,0.9)", pointerEvents: "none", zIndex: 3,
+            boxShadow: "0 0 4px rgba(255,255,255,0.5)",
+          }} />
+        )}
+
+        {/* Time labels */}
+        <div style={{ position: "absolute", bottom: 2, left: 4, right: 4, display: "flex", justifyContent: "space-between", pointerEvents: "none" }}>
+          <span style={{ fontSize: 7.5, color: "rgba(255,255,255,0.25)" }}>0:00</span>
+          <span style={{ fontSize: 7.5, color: "rgba(255,255,255,0.25)" }}>{fmtSec(duration)}</span>
+        </div>
+      </div>
+
+      {/* Controls row */}
+      <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 7 }}>
+        <button
+          onClick={() => {
+            if (isLivePlaying) { audioRef.current?.pause(); setIsLivePlaying(false); }
+            else seekAndPlay(selStart);
+          }}
+          style={{
+            width: 26, height: 26, borderRadius: "50%",
+            border: "1px solid rgba(124,58,237,0.45)",
+            background: "rgba(124,58,237,0.15)", color: "#a78bfa",
+            cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+          }}
+        >
+          {isLivePlaying
+            ? <svg width="8" height="8" viewBox="0 0 10 10" fill="currentColor"><rect x="1" y="1" width="3" height="8" rx="1" /><rect x="6" y="1" width="3" height="8" rx="1" /></svg>
+            : <svg width="8" height="8" viewBox="0 0 10 10" fill="currentColor"><polygon points="2,1 9,5 2,9" /></svg>
+          }
+        </button>
+
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 11, color: "#a78bfa", fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>
+            {fmtSec(startSec)} – {fmtSec(endSec)}
+          </div>
+          <div style={{ fontSize: 10, color: "#44445a" }}>{selectedDur.toFixed(1)}s selected</div>
+        </div>
+
+        <button onClick={onCancel} style={{
+          padding: "4px 9px", borderRadius: 6,
+          border: "1px solid rgba(255,255,255,0.1)",
+          background: "transparent", color: "#8888a8",
+          cursor: "pointer", fontSize: 11,
+        }}>
+          Cancel
+        </button>
+
+        <button
+          onClick={() => onConfirm(startSec, endSec)}
+          disabled={selectedDur < 0.5}
+          style={{
+            padding: "4px 11px", borderRadius: 6, border: "none",
+            background: selectedDur >= 0.5
+              ? "linear-gradient(90deg, #7c3aed, #06b6d4)"
+              : "rgba(255,255,255,0.05)",
+            color: selectedDur >= 0.5 ? "#fff" : "#44445a",
+            cursor: selectedDur >= 0.5 ? "pointer" : "default",
+            fontSize: 11, fontWeight: 700, flexShrink: 0,
+          }}
+        >
+          Add {Math.round(selectedDur)}s
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /* ─── Track Card ─────────────────────────────────────────────────────────────── */
 function TrackCard({
   track, isPlaying, isFailed, onTogglePlay, onAddToTimeline, onDelete,
-  showDelete = false,
+  showDelete = false, onBeforeOpenTrim,
 }: {
   track: MusicTrack;
   isPlaying: boolean;
   isFailed: boolean;
   onTogglePlay: (track: MusicTrack) => void;
-  onAddToTimeline: (track: MusicTrack) => void;
+  onAddToTimeline: (track: MusicTrack, trimStart?: number, trimEnd?: number) => void;
   onDelete?: (id: string) => void;
   showDelete?: boolean;
+  onBeforeOpenTrim?: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
   const [addHovered, setAddHovered] = useState(false);
+  const [showTrim, setShowTrim] = useState(false);
   const catColor = CATEGORY_COLORS[track.category] ?? "#7c3aed";
 
   const borderColor = isPlaying
@@ -242,15 +540,18 @@ function TrackCard({
               : <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><polygon points="2,1 9,5 2,9" /></svg>
           }
         </button>
-        {/* Add to timeline */}
+        {/* Add to timeline — opens trim selector */}
         <button
-          onClick={() => onAddToTimeline(track)}
+          onClick={() => { onBeforeOpenTrim?.(); setShowTrim(v => !v); }}
           onMouseEnter={() => setAddHovered(true)}
           onMouseLeave={() => setAddHovered(false)}
-          title="Add to timeline"
+          title={showTrim ? "Close trim selector" : "Add to timeline"}
           style={{
-            borderRadius: 6, border: "1px solid rgba(124,58,237,0.4)",
-            background: addHovered ? "rgba(124,58,237,0.35)" : "rgba(124,58,237,0.15)",
+            borderRadius: 6,
+            border: showTrim ? "1px solid rgba(124,58,237,0.7)" : "1px solid rgba(124,58,237,0.4)",
+            background: showTrim
+              ? "rgba(124,58,237,0.35)"
+              : addHovered ? "rgba(124,58,237,0.35)" : "rgba(124,58,237,0.15)",
             color: "#a78bfa",
             cursor: "pointer", padding: "5px 10px", fontSize: 11, fontWeight: 600,
             letterSpacing: "0.04em",
@@ -259,9 +560,21 @@ function TrackCard({
             flexShrink: 0,
           }}
         >
-          + Add
+          {showTrim ? "✕ Close" : "+ Add"}
         </button>
       </div>
+
+      {/* Trim selector — expands below the action row */}
+      {showTrim && (
+        <TrimSelector
+          track={track}
+          onConfirm={(trimStart, trimEnd) => {
+            onAddToTimeline(track, trimStart, trimEnd);
+            setShowTrim(false);
+          }}
+          onCancel={() => setShowTrim(false)}
+        />
+      )}
     </div>
   );
 }
@@ -377,12 +690,13 @@ function ControlCard({ title, badge, icon, children }: { title: string; badge?: 
 
 /* ─── Library Tab ────────────────────────────────────────────────────────────── */
 function LibraryTab({
-  playingId, failedId, onTogglePlay, onAddToTimeline,
+  playingId, failedId, onTogglePlay, onAddToTimeline, onBeforeOpenTrim,
 }: {
   playingId: string | null;
   failedId: string | null;
   onTogglePlay: (track: MusicTrack) => void;
-  onAddToTimeline: (track: MusicTrack) => void;
+  onAddToTimeline: (track: MusicTrack, trimStart?: number, trimEnd?: number) => void;
+  onBeforeOpenTrim?: () => void;
 }) {
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<MusicCategory | "all">("all");
@@ -474,6 +788,7 @@ function LibraryTab({
               isFailed={failedId === track.id}
               onTogglePlay={onTogglePlay}
               onAddToTimeline={onAddToTimeline}
+              onBeforeOpenTrim={onBeforeOpenTrim}
             />
           ))}
         </div>
@@ -484,15 +799,16 @@ function LibraryTab({
 
 /* ─── Uploaded Tab ───────────────────────────────────────────────────────────── */
 function UploadedTab({
-  audioTracks, playingId, failedId, onTogglePlay, onAddToTimeline, onUpload, onDelete,
+  audioTracks, playingId, failedId, onTogglePlay, onAddToTimeline, onUpload, onDelete, onBeforeOpenTrim,
 }: {
   audioTracks: UploadedAudio[];
   playingId: string | null;
   failedId: string | null;
   onTogglePlay: (track: MusicTrack) => void;
-  onAddToTimeline: (track: MusicTrack) => void;
+  onAddToTimeline: (track: MusicTrack, trimStart?: number, trimEnd?: number) => void;
   onUpload: () => void;
   onDelete: (id: string) => void;
+  onBeforeOpenTrim?: () => void;
 }) {
   const [dragOver, setDragOver] = useState(false);
 
@@ -589,6 +905,7 @@ function UploadedTab({
               onAddToTimeline={onAddToTimeline}
               showDelete
               onDelete={onDelete}
+              onBeforeOpenTrim={onBeforeOpenTrim}
             />
           );
         })}
@@ -786,7 +1103,7 @@ export interface MusicTabProps {
   onSelectAudio: (id: string) => void;
   onUpload: () => void;
   timeline: Timeline | null;
-  onAddMusicToTimeline?: (track: MusicTrack) => void;
+  onAddMusicToTimeline?: (track: MusicTrack, trimStart?: number, trimEnd?: number) => void;
   onDeleteUploaded?: (id: string) => void;
 }
 
@@ -836,8 +1153,14 @@ export default function MusicTab({
     };
   }, [subTab]);
 
-  const handleAddToTimeline = useCallback((track: MusicTrack) => {
-    onAddMusicToTimeline?.(track);
+  const handleBeforeOpenTrim = useCallback(() => {
+    // Stop any active preview so it doesn't play over the trim selector's audio
+    audioRef.current?.pause();
+    setPlayingId(null);
+  }, []);
+
+  const handleAddToTimeline = useCallback((track: MusicTrack, trimStart?: number, trimEnd?: number) => {
+    onAddMusicToTimeline?.(track, trimStart, trimEnd);
   }, [onAddMusicToTimeline]);
 
   const handleDelete = useCallback((id: string) => {
@@ -915,6 +1238,7 @@ export default function MusicTab({
             failedId={failedId}
             onTogglePlay={handleTogglePlay}
             onAddToTimeline={handleAddToTimeline}
+            onBeforeOpenTrim={handleBeforeOpenTrim}
           />
         )}
         {subTab === "uploaded" && (
@@ -926,6 +1250,7 @@ export default function MusicTab({
             onAddToTimeline={handleAddToTimeline}
             onUpload={onUpload}
             onDelete={handleDelete}
+            onBeforeOpenTrim={handleBeforeOpenTrim}
           />
         )}
         {subTab === "controls" && (

@@ -212,10 +212,10 @@ async function generateEditorial(
   const clipList = clips.map(c => `  Clip ${c.index}: "${c.name}"${c.duration ? ` (${c.duration.toFixed(2)}s — clipTrimEnd max: ${c.duration.toFixed(2)})` : ""}`).join("\n");
 
   const analysisSummary = input.videoAnalysis?.clips?.length
-    ? `\nCLIP ANALYSIS (use this to identify who/what is in each clip):\n${input.videoAnalysis.clips.map(c => {
-        const sceneDescs = c.scenes?.map(s => s.description).filter(Boolean).join(" → ") ?? "";
-        return `  Clip ${c.clipIndex}: ${sceneDescs || c.suggestedUse} | best segment: ${c.bestSegmentStart}–${c.bestSegmentEnd}s | quality: ${c.quality}`;
-      }).join("\n")}\n`
+    ? `\nCLIP ANALYSIS — who/what is visible in each clip (use this to match clips to the brief's ordering):\n${input.videoAnalysis.clips.map(c => {
+        const sceneDescs = c.scenes?.map(s => s.description).filter(Boolean).join("; ") ?? "";
+        return `  Clip ${c.clipIndex} ("${c.name}"): ${sceneDescs || c.suggestedUse}\n    → suggestedUse: ${c.suggestedUse}`;
+      }).join("\n")}\n\nFOOTAGE OVERVIEW: ${input.videoAnalysis.footageSummary ?? ""}\n`
     : "";
 
   const prompt = `You are a video editor. Read the brief and build ONLY what it describes — nothing extra.
@@ -226,17 +226,24 @@ ${input.prompt}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ABSOLUTE RULES:
-1. Create ONLY the scenes the brief explicitly describes. DO NOT add any scene not mentioned.
+1. USE ALL uploaded clips — every clip in CLIP INVENTORY must appear as exactly one scene. Never skip a clip.
 2. ONE scene per clip — never split one clip into multiple scenes.
-3. DO NOT add extra scenes at the end. If the brief ends with "end with X" — that is the LAST scene. Stop there.
+3. ORDERING IS CRITICAL — this is the most important rule. When the brief names specific people for specific positions:
+   a. FIRST read every entry in CLIP ANALYSIS above to find WHICH clipIndex matches each named person.
+      Look for: gender (girl/boy/man/woman), accessories (sunglasses, hat, earrings), clothing color, background.
+      Also look at the frames provided — they show multiple moments in each clip.
+   b. The brief's "start with X" → that person's clipIndex MUST be scene order=0.
+      The brief's "end with Y" → that person's clipIndex MUST be the LAST scene (highest order).
+   c. Cross-check: after building clipAssignments, verify the first sceneId maps to the "start" person
+      and the last sceneId maps to the "end" person. If not, swap until they do.
+   d. Never rely on clip filename or upload order to infer who is in a clip — use the CLIP ANALYSIS descriptions.
 4. clipTrimEnd MUST be ≤ the clip's exact duration shown in CLIP INVENTORY — exceeding it causes looping.
 5. For "complete / natural / full answer" — clipTrimStart=0.0, clipTrimEnd=<exact clip duration as a double/decimal e.g. 8.53, NOT 9>.
 6. ALL time values (clipTrimStart, clipTrimEnd, duration) MUST be doubles/decimals — never integers. Write 8.53 not 9, write 12.07 not 12.
-7. Match each person/subject in the brief to a clip number using the frames and clip analysis.
-8. Scene order must exactly follow the brief.
-9. SPEED: If the brief specifies a playback speed (e.g. "2x", "slow motion"), set "playbackSpeed" on EVERY scene AND set duration = (clipTrimEnd - clipTrimStart) / playbackSpeed.
-10. EFFECTS: If the brief specifies a visual effect or filter, set "visualEffect" on EVERY scene to the effect name (e.g. "black-and-white", "vignette", "warm", "cinematic").
-11. TRANSITIONS: If the brief specifies transitions, set "transition.type" accordingly — valid values: "cut","fade","dissolve","wipe-left","wipe-right","zoom-in","zoom-out","slide-left","slide-right","cinematic-fade".
+7. Each clipAssignment must have a UNIQUE clipIndex — never assign the same clipIndex to two scenes.
+8. SPEED: If the brief specifies a playback speed (e.g. "2x", "slow motion"), set "playbackSpeed" on EVERY scene AND set duration = (clipTrimEnd - clipTrimStart) / playbackSpeed.
+9. EFFECTS: If the brief specifies a visual effect or filter, set "visualEffect" on EVERY scene to the effect name (e.g. "black-and-white", "vignette", "warm", "cinematic").
+10. TRANSITIONS: If the brief specifies transitions, set "transition.type" accordingly — valid values: "cut","fade","dissolve","wipe-left","wipe-right","zoom-in","zoom-out","slide-left","slide-right","cinematic-fade".
 
 CLIP INVENTORY:
 ${clipList}
@@ -247,7 +254,7 @@ ${overrideLines}
 TONE: ${input.classification.tone} | PLATFORM: ${input.classification.platform}
 ${hookSection}
 
-Return ONLY this JSON. The scenes array must contain ONLY what the brief asks for — no extras:
+Return ONLY this JSON. Create ONE scene per clip. Every clip in CLIP INVENTORY must appear exactly once. Each clipAssignment must have a different clipIndex (0, 1, 2, 3…):
 {
   "timeline": {
     "id":"<uuid>","title":"<title>","brandWorkspaceId":"${input.brand.id}",

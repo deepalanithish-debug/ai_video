@@ -1,8 +1,30 @@
 import { z } from "zod";
 
 export const TransitionTypeSchema = z.enum([
-  "cut", "fade", "dissolve", "wipe-left", "wipe-right",
-  "zoom-in", "zoom-out", "slide-left", "slide-right", "cinematic-fade"
+  // Basic
+  "cut", "hard-cut",
+  // Fade
+  "fade", "fade-to-black", "fade-to-white",
+  // Dissolve
+  "dissolve", "cross-dissolve",
+  // Zoom
+  "zoom-in", "zoom-out", "zoom-punch",
+  // Slide
+  "slide-left", "slide-right", "slide-up", "slide-down",
+  // Push
+  "push-left", "push-right", "push-up", "push-down",
+  // Wipe
+  "wipe-left", "wipe-right",
+  // Glitch
+  "glitch", "rgb-split",
+  // Slice
+  "slice-h", "slice-v",
+  // Blur
+  "blur-fade", "zoom-blur",
+  // Motion
+  "whip-pan-left", "whip-pan-right",
+  // Cinematic
+  "cinematic-fade", "film-burn",
 ]);
 
 export const TextPlacementSchema = z.object({
@@ -55,7 +77,14 @@ export const SceneSchema = z.object({
   clipTrimEnd: z.number().min(0).optional(),
   transition: z.object({
     type: TransitionTypeSchema,
-    duration: z.number().min(0.1).max(3),
+    duration: z.number().min(0).max(3),
+    speed: z.enum(["slow", "normal", "fast"]).optional(),
+    intensity: z.number().min(0).max(1).optional(),
+    direction: z.enum(["left", "right", "up", "down", "auto"]).optional(),
+    mode: z.enum(["in", "out", "both"]).optional(),
+    easing: z.string().optional(),
+    blurAmount: z.number().min(0).max(20).optional(),
+    motionStrength: z.number().min(0).max(1).optional(),
   }).optional(),
   captions: z.array(CaptionLineSchema).default([]),
   overlays: z.array(OverlayElementSchema).default([]),
