@@ -479,30 +479,42 @@ export default function EditorLayout() {
       {/* ── Top bar (single compact row) ── */}
       <div style={{
         height: 64, display: "flex", alignItems: "stretch",
-        borderBottom: "1px solid var(--border)", flexShrink: 0,
-        background: "var(--bg-panel)",
+        borderBottom: "1px solid rgba(124,58,237,0.2)", flexShrink: 0,
+        background: "#09091a", position: "relative",
       }}>
+        {/* Animated gradient line at bottom of top bar */}
+        <div style={{
+          position: "absolute", bottom: 0, left: 0, right: 0, height: 1,
+          background: "linear-gradient(90deg, transparent, #7c3aed, #06b6d4, transparent)",
+          animation: "gradientShift 4s ease infinite",
+          backgroundSize: "200% 100%",
+          opacity: 0.5,
+          pointerEvents: "none",
+        }} />
+
         {/* Logo */}
         <div style={{
-          width: 110, display: "flex", alignItems: "center", gap: 9,
-          padding: "0 16px", borderRight: "1px solid var(--border)",
+          width: 130, display: "flex", alignItems: "center", gap: 9,
+          padding: "0 18px", borderRight: "1px solid rgba(124,58,237,0.2)",
           flexShrink: 0,
         }}>
           <div style={{
-            width: 28, height: 28, borderRadius: 6, background: "var(--accent)",
+            width: 30, height: 30, borderRadius: 8,
+            background: "linear-gradient(135deg, #7c3aed, #06b6d4)",
             display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+            boxShadow: "0 0 12px rgba(124,58,237,0.4)",
           }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0e0e0f" strokeWidth="2.8">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2.8">
               <polygon points="5 3 19 12 5 21 5 3" />
             </svg>
           </div>
-          <span style={{ fontSize: 13, fontWeight: 700, background: "linear-gradient(90deg, #7c3aed, #06b6d4)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", letterSpacing: "0.07em" }}>
+          <span style={{ fontSize: 14, fontWeight: 700, background: "linear-gradient(90deg, #a78bfa, #06b6d4)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", letterSpacing: "0.07em" }}>
             VydeoAI
           </span>
         </div>
 
         {/* Prompt bar + metadata chips — flex-1 */}
-        <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "stretch", borderRight: "1px solid var(--border)" }}>
+        <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "stretch", borderRight: "1px solid rgba(124,58,237,0.2)" }}>
           <PromptBar
             onLineupGenerated={handleLineupGenerated}
             workspaceSlug={workspace.slug}
@@ -521,56 +533,49 @@ export default function EditorLayout() {
           />
         </div>
 
-        {/* Right: Generate + workspace + actions */}
+        {/* Right: draft name + actions */}
         <div style={{
-          display: "flex", alignItems: "center", gap: 6,
-          padding: "0 12px", flexShrink: 0,
+          display: "flex", alignItems: "center", gap: 8,
+          padding: "0 14px", flexShrink: 0,
         }}>
-          {/* Workspace badge — purple like reference */}
-          <div style={{
-            display: "flex", alignItems: "center", gap: 7,
-            padding: "6px 14px", borderRadius: 7,
-            background: "rgba(109,40,217,0.15)", border: "1px solid rgba(109,40,217,0.35)",
-          }}>
-            <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#7c3aed" }} />
-            <span style={{ fontSize: 13, fontWeight: 700, color: "#a78bfa", letterSpacing: "0.08em" }}>
-              {workspace.name.toUpperCase()}
-            </span>
+          {/* Draft name (editable inline) */}
+          <div style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
+            <input
+              value={draftName}
+              onChange={e => setDraftName(e.target.value)}
+              style={{
+                background: "transparent", border: "none", outline: "none",
+                color: "var(--text-secondary)", fontSize: 12, fontWeight: 500,
+                maxWidth: 120, cursor: "text",
+                borderBottom: "1px solid transparent",
+                transition: "all 0.15s ease",
+                padding: "2px 0",
+              }}
+              onFocus={e => { e.currentTarget.style.borderBottomColor = "rgba(124,58,237,0.5)"; e.currentTarget.style.color = "var(--text-primary)"; }}
+              onBlur={e => { e.currentTarget.style.borderBottomColor = "transparent"; e.currentTarget.style.color = "var(--text-secondary)"; }}
+            />
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="rgba(124,58,237,0.5)" strokeWidth="2" style={{ flexShrink: 0, pointerEvents: "none" }}>
+              <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+              <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+            </svg>
           </div>
 
-          {/* Generate button */}
-          <button
-            onClick={() => {
-              const evt = new CustomEvent("frameai:open-prompt");
-              window.dispatchEvent(evt);
-            }}
-            disabled={isGenerating}
-            style={{
-              padding: "9px 18px", borderRadius: 8,
-              border: "none",
-              background: isGenerating ? "rgba(201,169,110,0.4)" : "var(--accent)",
-              color: "#0e0e0f", fontSize: 14, fontWeight: 700,
-              cursor: isGenerating ? "not-allowed" : "pointer",
-              letterSpacing: "0.04em",
-              display: "flex", alignItems: "center", gap: 7,
-            }}
-          >
-            {isGenerating ? (
-              <>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ animation: "spin 1s linear infinite" }}>
+          {/* Autosave indicator */}
+          {autoSaveStatus !== "idle" && (
+            <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: autoSaveStatus === "saved" ? "#34d399" : "#7c3aed", transition: "all 0.15s ease" }}>
+              {autoSaveStatus === "saving" ? (
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ animation: "spin 1s linear infinite" }}>
                   <path d="M21 12a9 9 0 1 1-6.219-8.56" />
                 </svg>
-                Generating…
-              </>
-            ) : (
-              <>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M12 3v3m0 12v3M3 12h3m12 0h3m-2.6-7.4-2.1 2.1M8.7 15.3l-2.1 2.1m0-11.8 2.1 2.1m6.6 6.6 2.1 2.1" />
-                </svg>
-                Generate
-              </>
-            )}
-          </button>
+              ) : (
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+              )}
+              {autoSaveStatus === "saving" ? "Saving…" : "Saved"}
+            </div>
+          )}
+
+          {/* Divider */}
+          <div style={{ width: 1, height: 20, background: "rgba(124,58,237,0.2)", flexShrink: 0 }} />
 
           {/* Render / JSON / Export actions */}
           {timeline && (
@@ -579,22 +584,27 @@ export default function EditorLayout() {
                 onClick={handleRender}
                 disabled={isRendering}
                 style={{
-                  padding: "7px 14px", borderRadius: 7,
-                  border: "1px solid var(--border)",
-                  background: isRendering ? "rgba(201,169,110,0.12)" : "transparent",
-                  color: isRendering ? "var(--accent)" : "var(--text-secondary)",
-                  fontSize: 13, fontWeight: 600, cursor: isRendering ? "not-allowed" : "pointer",
-                  display: "flex", alignItems: "center", gap: 7, transition: "all 0.12s ease",
+                  padding: "7px 16px", borderRadius: 8,
+                  border: "none",
+                  background: isRendering
+                    ? "rgba(124,58,237,0.2)"
+                    : "linear-gradient(135deg, #7c3aed, #06b6d4)",
+                  color: "#ffffff",
+                  fontSize: 12, fontWeight: 700, cursor: isRendering ? "not-allowed" : "pointer",
+                  display: "flex", alignItems: "center", gap: 6,
+                  transition: "all 0.15s ease",
+                  boxShadow: isRendering ? "none" : "0 2px 12px rgba(124,58,237,0.35)",
+                  letterSpacing: "0.03em",
                 }}
-                onMouseEnter={e => { if (!isRendering) { e.currentTarget.style.borderColor = "var(--accent-dim)"; e.currentTarget.style.color = "var(--accent)"; } }}
-                onMouseLeave={e => { if (!isRendering) { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.color = "var(--text-secondary)"; } }}
+                onMouseEnter={e => { if (!isRendering) { e.currentTarget.style.transform = "translateY(-1px)"; e.currentTarget.style.boxShadow = "0 4px 20px rgba(124,58,237,0.55), 0 2px 8px rgba(6,182,212,0.3)"; } }}
+                onMouseLeave={e => { if (!isRendering) { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "0 2px 12px rgba(124,58,237,0.35)"; } }}
               >
                 {isRendering ? (
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ animation: "spin 1s linear infinite" }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ animation: "spin 1s linear infinite" }}>
                     <path d="M21 12a9 9 0 1 1-6.219-8.56" />
                   </svg>
                 ) : (
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                     <polyline points="7 10 12 15 17 10" />
                     <line x1="12" y1="15" x2="12" y2="3" />
@@ -606,42 +616,48 @@ export default function EditorLayout() {
                 onClick={() => setShowJSON(!showJSON)}
                 style={{
                   padding: "7px 11px", borderRadius: 7,
-                  border: "1px solid var(--border)",
-                  background: showJSON ? "var(--accent-bg)" : "transparent",
-                  color: showJSON ? "var(--accent)" : "var(--text-muted)",
-                  fontSize: 13, fontWeight: 500, cursor: "pointer",
-                  transition: "all 0.12s ease",
+                  border: `1px solid ${showJSON ? "rgba(124,58,237,0.5)" : "rgba(124,58,237,0.2)"}`,
+                  background: showJSON ? "rgba(124,58,237,0.15)" : "transparent",
+                  color: showJSON ? "#a78bfa" : "var(--text-muted)",
+                  fontSize: 12, fontWeight: 500, cursor: "pointer",
+                  transition: "all 0.15s ease",
                 }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = "rgba(124,58,237,0.5)"; e.currentTarget.style.color = "#a78bfa"; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = showJSON ? "rgba(124,58,237,0.5)" : "rgba(124,58,237,0.2)"; e.currentTarget.style.color = showJSON ? "#a78bfa" : "var(--text-muted)"; }}
               >JSON</button>
             </>
           )}
 
-          {/* Autosave indicator */}
-          {autoSaveStatus !== "idle" && (
-            <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: autoSaveStatus === "saved" ? "#34d399" : "var(--text-muted)" }}>
-              {autoSaveStatus === "saving" ? (
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ animation: "spin 1s linear infinite" }}>
-                  <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-                </svg>
-              ) : (
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-              )}
-              {autoSaveStatus === "saving" ? "Saving…" : "Saved"}
-            </div>
-          )}
           {/* Home link */}
-          <a href="/" style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 32, height: 32, borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--text-muted)", textDecoration: "none", flexShrink: 0 }}
-            title="Back to Home">
+          <a
+            href="/"
+            title="Back to Home"
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "center",
+              width: 32, height: 32, borderRadius: 7,
+              border: "1px solid rgba(124,58,237,0.2)",
+              background: "transparent", color: "var(--text-muted)",
+              textDecoration: "none", flexShrink: 0, transition: "all 0.15s ease",
+            }}
+            onMouseEnter={e => { (e.currentTarget as HTMLAnchorElement).style.borderColor = "rgba(124,58,237,0.5)"; (e.currentTarget as HTMLAnchorElement).style.color = "#a78bfa"; (e.currentTarget as HTMLAnchorElement).style.transform = "translateY(-1px)"; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLAnchorElement).style.borderColor = "rgba(124,58,237,0.2)"; (e.currentTarget as HTMLAnchorElement).style.color = "var(--text-muted)"; (e.currentTarget as HTMLAnchorElement).style.transform = "translateY(0)"; }}
+          >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
           </a>
+
           {/* User avatar */}
           <div style={{
-            width: 36, height: 36, borderRadius: "50%",
+            width: 34, height: 34, borderRadius: "50%",
             background: "linear-gradient(135deg, #7c3aed, #06b6d4)",
             display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 13, fontWeight: 700, color: "#ffffff",
+            fontSize: 12, fontWeight: 700, color: "#ffffff",
             cursor: "pointer", flexShrink: 0,
-          }}>
+            boxShadow: "0 0 10px rgba(124,58,237,0.35)",
+            transition: "all 0.15s ease",
+          }}
+            onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = "0 0 18px rgba(124,58,237,0.6)"; (e.currentTarget as HTMLDivElement).style.transform = "translateY(-1px)"; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = "0 0 10px rgba(124,58,237,0.35)"; (e.currentTarget as HTMLDivElement).style.transform = "translateY(0)"; }}
+          >
             V
           </div>
         </div>

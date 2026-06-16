@@ -10,7 +10,7 @@ export default function LoginPage() {
   const [rememberMe, setRememberMe] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<{ msg: string; type: "no-account" | "wrong-password" | "generic" } | null>(null);
   const [emailFocused, setEmailFocused] = useState(false);
   const [passwordFocused, setPasswordFocused] = useState(false);
   const [btnHovered, setBtnHovered] = useState(false);
@@ -18,7 +18,7 @@ export default function LoginPage() {
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
-      setError("");
+      setError(null);
       setLoading(true);
       try {
         const res = await fetch("/api/auth/login", {
@@ -28,12 +28,19 @@ export default function LoginPage() {
         });
         const data = await res.json();
         if (!res.ok) {
-          setError(data?.message || "Invalid credentials. Please try again.");
+          const msg: string = data?.error ?? "Something went wrong. Please try again.";
+          if (msg.toLowerCase().includes("no account") || msg.toLowerCase().includes("not found")) {
+            setError({ msg, type: "no-account" });
+          } else if (msg.toLowerCase().includes("incorrect") || msg.toLowerCase().includes("password")) {
+            setError({ msg, type: "wrong-password" });
+          } else {
+            setError({ msg, type: "generic" });
+          }
         } else {
           router.push("/");
         }
       } catch {
-        setError("Network error. Please check your connection and try again.");
+        setError({ msg: "Network error. Please check your connection and try again.", type: "generic" });
       } finally {
         setLoading(false);
       }
@@ -649,40 +656,45 @@ export default function LoginPage() {
                 className="error-box"
                 style={{
                   marginBottom: 20,
-                  padding: "12px 16px",
+                  padding: "14px 16px",
                   borderRadius: 10,
-                  background: "rgba(248,113,113,0.1)",
+                  background: "rgba(248,113,113,0.08)",
                   border: "1px solid rgba(248,113,113,0.35)",
                   display: "flex",
-                  alignItems: "flex-start",
-                  gap: 10,
+                  flexDirection: "column",
+                  gap: 8,
+                  animation: "shake 0.45s ease",
                 }}
               >
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 16 16"
-                  fill="none"
-                  style={{ marginTop: 1, flexShrink: 0 }}
-                >
-                  <circle cx="8" cy="8" r="7" stroke="#f87171" strokeWidth="1.5" />
-                  <path
-                    d="M8 5v3.5M8 11h.01"
-                    stroke="#f87171"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                  />
-                </svg>
-                <span
-                  style={{
-                    fontSize: 13,
-                    color: "#f87171",
-                    fontWeight: 500,
-                    lineHeight: 1.5,
-                  }}
-                >
-                  {error}
-                </span>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ marginTop: 1, flexShrink: 0 }}>
+                    <circle cx="8" cy="8" r="7" stroke="#f87171" strokeWidth="1.5" />
+                    <path d="M8 5v3.5M8 11h.01" stroke="#f87171" strokeWidth="1.5" strokeLinecap="round" />
+                  </svg>
+                  <span style={{ fontSize: 13, color: "#f87171", fontWeight: 600, lineHeight: 1.5 }}>
+                    {error.msg}
+                  </span>
+                </div>
+                {error.type === "no-account" && (
+                  <div style={{ fontSize: 12, color: "rgba(248,113,113,0.8)", paddingLeft: 26 }}>
+                    Don&apos;t have an account?{" "}
+                    <a href="/signup" style={{ color: "#a78bfa", fontWeight: 600, textDecoration: "none" }}>
+                      Sign up for free →
+                    </a>
+                  </div>
+                )}
+                {error.type === "wrong-password" && (
+                  <div style={{ fontSize: 12, color: "rgba(248,113,113,0.8)", paddingLeft: 26 }}>
+                    Forgot your password?{" "}
+                    <button
+                      type="button"
+                      onClick={() => { const el = document.getElementById("forgot-link"); if (el) el.click(); }}
+                      style={{ background: "none", border: "none", color: "#a78bfa", fontWeight: 600, fontSize: 12, cursor: "pointer", padding: 0 }}
+                    >
+                      Click here to reset it →
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
@@ -973,6 +985,7 @@ export default function LoginPage() {
                 </label>
 
                 <a
+                  id="forgot-link"
                   href="/forgot-password"
                   style={{
                     fontSize: 13,

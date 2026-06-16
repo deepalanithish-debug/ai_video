@@ -525,7 +525,7 @@ export default function SignupPage() {
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-          throw new Error(data?.message || "Signup failed. Please try again.");
+          throw new Error(data?.error || data?.message || "Signup failed. Please try again.");
         }
         router.push("/");
       } catch (err: unknown) {

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
+import VibeChat from "@/components/VibeChat";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -86,14 +87,13 @@ const THUMB_GRADIENTS = [
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function VibeButton() {
-  const [open, setOpen] = useState(false);
+function VibeFloatingButton({ onClick }: { onClick: () => void }) {
   const [hovered, setHovered] = useState(false);
 
   return (
     <>
       {/* Tooltip */}
-      {hovered && !open && (
+      {hovered && (
         <div style={{
           position: "fixed",
           bottom: 90,
@@ -113,91 +113,9 @@ function VibeButton() {
         </div>
       )}
 
-      {/* Slide-up panel */}
-      {open && (
-        <div style={{
-          position: "fixed",
-          bottom: 90,
-          right: 24,
-          width: 340,
-          height: 420,
-          background: "rgba(10,10,25,0.97)",
-          border: "1px solid rgba(201,169,110,0.25)",
-          borderRadius: 20,
-          zIndex: 1000,
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-          boxShadow: "0 24px 64px rgba(0,0,0,0.6), 0 0 40px rgba(201,169,110,0.08)",
-          animation: "slideUp 0.3s ease",
-        }}>
-          {/* Panel header */}
-          <div style={{
-            padding: "16px 20px",
-            borderBottom: "1px solid rgba(201,169,110,0.15)",
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-          }}>
-            <span style={{ fontSize: 22 }}>✨</span>
-            <div>
-              <div style={{ color: "#c9a96e", fontWeight: 700, fontSize: 15 }}>Vibe AI</div>
-              <div style={{ color: "rgba(241,241,246,0.4)", fontSize: 12 }}>Your creative assistant</div>
-            </div>
-            <button
-              onClick={() => setOpen(false)}
-              style={{
-                marginLeft: "auto",
-                background: "none",
-                border: "none",
-                color: "rgba(241,241,246,0.4)",
-                cursor: "pointer",
-                fontSize: 18,
-                lineHeight: 1,
-                padding: 4,
-              }}
-            >×</button>
-          </div>
-          {/* Panel body */}
-          <div style={{
-            flex: 1,
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 16,
-            padding: 24,
-          }}>
-            <div style={{
-              width: 64,
-              height: 64,
-              borderRadius: "50%",
-              background: "linear-gradient(135deg, #c9a96e 0%, #f59e0b 100%)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 28,
-              boxShadow: "0 0 32px rgba(201,169,110,0.4)",
-            }}>✨</div>
-            <div style={{ color: "#f1f1f6", fontWeight: 600, fontSize: 18, textAlign: "center" }}>
-              Vibe is coming soon
-            </div>
-            <div style={{
-              color: "rgba(241,241,246,0.4)",
-              fontSize: 14,
-              textAlign: "center",
-              lineHeight: 1.6,
-              maxWidth: 240,
-            }}>
-              Your AI creative assistant is being crafted. It will help you brainstorm, write scripts, and generate ideas — all within VydeoAI.
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Floating button */}
       <button
-        onClick={() => setOpen((p) => !p)}
+        onClick={onClick}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         style={{
@@ -536,6 +454,9 @@ export default function HomePage() {
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Vibe state
+  const [vibeOpen, setVibeOpen] = useState(false);
 
   // Navbar state
   const [searchQuery, setSearchQuery] = useState("");
@@ -1197,7 +1118,12 @@ export default function HomePage() {
               paddingBottom: 4,
             }}>
               {quickTools.map((tool) => (
-                <QuickToolCard key={tool.label} tool={tool} router={router} />
+                <QuickToolCard
+                  key={tool.label}
+                  tool={tool}
+                  router={router}
+                  onVibeOpen={() => setVibeOpen(true)}
+                />
               ))}
             </div>
           </section>
@@ -1210,8 +1136,18 @@ export default function HomePage() {
         </main>
 
         {/* ── Vibe floating button ──────────────────────────────────────────── */}
-        <VibeButton />
+        <VibeFloatingButton onClick={() => setVibeOpen(true)} />
       </div>
+
+      {/* Vibe chat modal */}
+      <VibeChat
+        isOpen={vibeOpen}
+        onClose={() => setVibeOpen(false)}
+        onDraftCreated={(id) => {
+          setVibeOpen(false);
+          router.push(`/editor?draft=${id}`);
+        }}
+      />
     </>
   );
 }
@@ -1341,14 +1277,20 @@ function EmptyState({
 function QuickToolCard({
   tool,
   router,
+  onVibeOpen,
 }: {
   tool: { icon: string; label: string; desc: string; color: string; bg: string; href: string };
   router: ReturnType<typeof useRouter>;
+  onVibeOpen?: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
   return (
     <div
       onClick={() => {
+        if (tool.href === "#vibe") {
+          onVibeOpen?.();
+          return;
+        }
         if (tool.href.startsWith("#")) return;
         router.push(tool.href);
       }}

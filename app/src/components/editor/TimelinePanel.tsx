@@ -97,8 +97,8 @@ export default function TimelinePanel({
       <div
         style={{
           height: 100,
-          background: "var(--timeline-track)",
-          borderTop: "1px solid var(--border)",
+          background: "#07071a",
+          borderTop: "1px solid rgba(124,58,237,0.15)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -118,8 +118,8 @@ export default function TimelinePanel({
     <div
       style={{
         height: 220,
-        background: "var(--timeline-track)",
-        borderTop: "1px solid var(--border)",
+        background: "#07071a",
+        borderTop: "1px solid rgba(124,58,237,0.2)",
         display: "flex",
         flexDirection: "column",
         flexShrink: 0,
@@ -133,8 +133,9 @@ export default function TimelinePanel({
           alignItems: "center",
           gap: 8,
           padding: "6px 12px",
-          borderBottom: "1px solid var(--border-subtle)",
+          borderBottom: "1px solid rgba(124,58,237,0.1)",
           flexShrink: 0,
+          background: "rgba(124,58,237,0.03)",
         }}
       >
         <div style={{ display: "flex", gap: 2 }}>
@@ -169,10 +170,12 @@ export default function TimelinePanel({
           disabled={isExporting}
           style={{
             padding: "5px 14px",
-            borderRadius: 5,
+            borderRadius: 6,
             border: "none",
-            background: isExporting ? "var(--bg-elevated)" : "var(--accent)",
-            color: isExporting ? "var(--text-muted)" : "#0e0e0f",
+            background: isExporting
+              ? "rgba(124,58,237,0.15)"
+              : "linear-gradient(135deg, #7c3aed, #06b6d4)",
+            color: isExporting ? "#7c3aed" : "#fff",
             fontSize: 11,
             fontWeight: 700,
             cursor: isExporting ? "not-allowed" : "pointer",
@@ -180,7 +183,11 @@ export default function TimelinePanel({
             display: "flex",
             alignItems: "center",
             gap: 5,
+            boxShadow: isExporting ? "none" : "0 2px 10px rgba(124,58,237,0.35)",
+            transition: "all 0.15s ease",
           }}
+          onMouseEnter={e => { if (!isExporting) { e.currentTarget.style.transform = "translateY(-1px)"; e.currentTarget.style.boxShadow = "0 4px 16px rgba(124,58,237,0.5)"; } }}
+          onMouseLeave={e => { if (!isExporting) { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "0 2px 10px rgba(124,58,237,0.35)"; } }}
         >
           {isExporting ? "Exporting..." : (
             <>
@@ -231,7 +238,8 @@ export default function TimelinePanel({
             bottom: 0,
             left: 18 + 12 + currentTime * pixelsPerSecond,
             width: 1,
-            background: "var(--accent)",
+            background: "#7c3aed",
+            boxShadow: "0 0 6px rgba(124,58,237,0.7)",
             pointerEvents: "none",
             zIndex: 10,
             transition: "left 0.05s linear",
@@ -247,7 +255,7 @@ export default function TimelinePanel({
             height: 0,
             borderLeft: "4px solid transparent",
             borderRight: "4px solid transparent",
-            borderTop: "6px solid var(--accent)",
+            borderTop: "6px solid #7c3aed",
           }} />
         </div>
 
@@ -492,9 +500,9 @@ function InsertClipButton({ position, onInsert }: { position: number; onInsert: 
           margin: "0 1px", transition: "all 0.12s ease", lineHeight: 1,
         }}
         onMouseEnter={(e) => {
-          e.currentTarget.style.borderColor = "var(--accent)";
-          e.currentTarget.style.color = "var(--accent)";
-          e.currentTarget.style.background = "var(--accent-bg)";
+          e.currentTarget.style.borderColor = "rgba(124,58,237,0.6)";
+          e.currentTarget.style.color = "#a78bfa";
+          e.currentTarget.style.background = "rgba(124,58,237,0.12)";
         }}
         onMouseLeave={(e) => {
           e.currentTarget.style.borderColor = "var(--border-subtle)";
@@ -512,13 +520,14 @@ function TrackLabel({ children, style }: { children: React.ReactNode; style?: Re
   return (
     <div
       style={{
-        width: 18,
-        fontSize: 9,
+        width: 20,
+        fontSize: 8,
         fontWeight: 700,
         color: "var(--text-muted)",
         letterSpacing: "0.1em",
         flexShrink: 0,
         textAlign: "center",
+        paddingLeft: 2,
         ...style,
       }}
     >
@@ -545,7 +554,7 @@ function TimeRuler({ totalDuration, pixelsPerSecond, onSeek }: { totalDuration: 
         height: 18, paddingLeft: OFFSET,
         display: "flex", alignItems: "flex-end",
         overflowX: "hidden", flexShrink: 0,
-        borderBottom: "1px solid var(--border-subtle)",
+        borderBottom: "1px solid rgba(124,58,237,0.1)",
         cursor: "col-resize", position: "relative",
         userSelect: "none",
       }}
@@ -874,30 +883,30 @@ function TransitionConnector({
         style={{
           height: 24, borderRadius: 12, flexShrink: 0, padding: "0 8px",
           minWidth: 40,
-          background: isNonCut ? "rgba(201,169,110,0.18)" : "var(--bg-elevated)",
-          border: `1.5px solid ${isNonCut ? "rgba(201,169,110,0.5)" : "var(--border-subtle)"}`,
-          color: isNonCut ? "var(--accent)" : "var(--text-muted)",
+          background: isNonCut ? "rgba(124,58,237,0.15)" : "rgba(13,13,34,0.8)",
+          border: `1.5px solid ${isNonCut ? "rgba(124,58,237,0.45)" : "rgba(124,58,237,0.15)"}`,
+          color: isNonCut ? "#a78bfa" : "var(--text-muted)",
           fontSize: 9, cursor: "pointer",
           display: "flex", alignItems: "center", justifyContent: "center", gap: 3,
-          transition: "all 0.12s ease",
+          transition: "all 0.15s ease",
           whiteSpace: "nowrap",
         }}
         onMouseEnter={(e) => {
-          e.currentTarget.style.borderColor = "var(--accent)";
-          e.currentTarget.style.background = "rgba(201,169,110,0.25)";
-          e.currentTarget.style.color = "var(--accent)";
+          e.currentTarget.style.borderColor = "rgba(124,58,237,0.6)";
+          e.currentTarget.style.background = "rgba(124,58,237,0.22)";
+          e.currentTarget.style.color = "#a78bfa";
         }}
         onMouseLeave={(e) => {
-          e.currentTarget.style.borderColor = isNonCut ? "rgba(201,169,110,0.5)" : "var(--border-subtle)";
-          e.currentTarget.style.background = isNonCut ? "rgba(201,169,110,0.18)" : "var(--bg-elevated)";
-          e.currentTarget.style.color = isNonCut ? "var(--accent)" : "var(--text-muted)";
+          e.currentTarget.style.borderColor = isNonCut ? "rgba(124,58,237,0.45)" : "rgba(124,58,237,0.15)";
+          e.currentTarget.style.background = isNonCut ? "rgba(124,58,237,0.15)" : "rgba(13,13,34,0.8)";
+          e.currentTarget.style.color = isNonCut ? "#a78bfa" : "var(--text-muted)";
         }}
       >
         <span style={{ fontSize: 9 }}>{icon}</span>
         <span style={{ fontSize: 8.5, fontWeight: 600, letterSpacing: "0.02em" }}>{shortLabel}</span>
       </button>
       {isNonCut && currentDur > 0 && (
-        <div style={{ fontSize: 7, color: "var(--accent)", opacity: 0.65, marginTop: 1, pointerEvents: "none", whiteSpace: "nowrap" }}>
+        <div style={{ fontSize: 7, color: "#a78bfa", opacity: 0.65, marginTop: 1, pointerEvents: "none", whiteSpace: "nowrap" }}>
           {currentDur.toFixed(1)}s
         </div>
       )}
@@ -935,16 +944,18 @@ function ToolbarButton({ children, title, onClick }: { children: React.ReactNode
       style={{
         width: 24,
         height: 24,
-        borderRadius: 4,
-        border: "1px solid var(--border-subtle)",
-        background: "var(--bg-elevated)",
+        borderRadius: 5,
+        border: "1px solid rgba(124,58,237,0.2)",
+        background: "rgba(124,58,237,0.06)",
         color: "var(--text-secondary)",
         cursor: "pointer",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        transition: "all 0.1s ease",
+        transition: "all 0.15s ease",
       }}
+      onMouseEnter={e => { e.currentTarget.style.borderColor = "rgba(124,58,237,0.45)"; e.currentTarget.style.color = "#a78bfa"; e.currentTarget.style.background = "rgba(124,58,237,0.12)"; }}
+      onMouseLeave={e => { e.currentTarget.style.borderColor = "rgba(124,58,237,0.2)"; e.currentTarget.style.color = "var(--text-secondary)"; e.currentTarget.style.background = "rgba(124,58,237,0.06)"; }}
     >
       {children}
     </button>

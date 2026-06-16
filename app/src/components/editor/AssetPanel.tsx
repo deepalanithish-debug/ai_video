@@ -15,6 +15,8 @@ import {
 import { v4 as uuidv4 } from "uuid";
 import type { OutroTemplate } from "@/types/outro";
 import { OUTRO_PRESETS } from "@/types/outro";
+import MusicTab from "./MusicTab";
+import type { MusicTrack } from "@/types/music";
 
 export type TemplatePreset = {
   id: string; name: string; duration: string; scenes: number; mood: string; ratio: string;
@@ -75,9 +77,11 @@ interface AssetPanelProps {
   showSafeZones?: boolean;
   showThirds?: boolean;
   onGuideToggle?: (g: "grid" | "safeZones" | "thirds") => void;
+  // Music
+  onAddMusicToTimeline?: (track: MusicTrack) => void;
 }
 
-type NavTab = "media" | "transitions" | "text" | "audio" | "elements" | "brand" | "ai";
+type NavTab = "media" | "transitions" | "text" | "music" | "elements" | "brand" | "ai";
 
 const NAV_ITEMS: { id: NavTab; label: string; icon: React.ReactNode }[] = [
   {
@@ -106,7 +110,7 @@ const NAV_ITEMS: { id: NavTab; label: string; icon: React.ReactNode }[] = [
     ),
   },
   {
-    id: "audio", label: "Audio",
+    id: "music", label: "Music",
     icon: (
       <svg width="25.5" height="25.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
         <path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" />
@@ -172,6 +176,7 @@ export default function AssetPanel({
   captions = [], selectedCaptionId = null, currentTime = 0, totalDuration = 30,
   onCaptionAdd, onCaptionUpdate, onCaptionDelete, onCaptionSelect,
   showGrid = false, showSafeZones = false, showThirds = false, onGuideToggle,
+  onAddMusicToTimeline,
 }: AssetPanelProps) {
   const [activeTab, setActiveTab] = useState<NavTab>("transitions");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -295,10 +300,14 @@ export default function AssetPanel({
               onGuideToggle={onGuideToggle}
             />
           )}
-          {activeTab === "audio" && (
-            <AudioTabContent
-              audioTracks={audioTracks} activeAudioId={activeAudioId}
-              onSelectAudio={onSelectAudio} onUpload={() => audioInputRef.current?.click()}
+          {activeTab === "music" && (
+            <MusicTab
+              audioTracks={audioTracks}
+              activeAudioId={activeAudioId}
+              onSelectAudio={onSelectAudio}
+              onUpload={() => audioInputRef.current?.click()}
+              timeline={timeline}
+              onAddMusicToTimeline={onAddMusicToTimeline}
             />
           )}
           {activeTab === "elements" && (
