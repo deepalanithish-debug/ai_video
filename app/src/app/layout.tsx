@@ -9,8 +9,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "FrameAI — Brand-Aware Video Editor",
-  description: "AI-powered video editor that turns prompts into structured edit plans. Built for brand-safe advertising production.",
+  title: "VydeoAI — AI-Powered Video Editor",
+  description: "Create stunning videos with AI. Generate, edit, and elevate your content with VydeoAI.",
 };
 
 export default function RootLayout({

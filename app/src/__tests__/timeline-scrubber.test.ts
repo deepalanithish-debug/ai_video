@@ -13,7 +13,7 @@ function resolveScene(timeline: Timeline, currentTime: number) {
 
 function makeTimeline(durations: number[]): Timeline {
   return {
-    id: "t1", workspaceId: "w1", prompt: "test", aspectRatio: "9:16",
+    id: "t1", title: "Test", brandWorkspaceId: "w1", aspectRatio: "9:16", isLocked: false,
     targetPlatform: "instagram", totalDuration: durations.reduce((a, b) => a + b, 0),
     scenes: durations.map((dur, i) => ({
       id: `s${i}`, order: i, label: `Scene ${i}`, description: "",

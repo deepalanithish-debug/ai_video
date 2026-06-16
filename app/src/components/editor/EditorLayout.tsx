@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import PromptBar, { type EvaluationData } from "./PromptBar";
 import AssetPanel from "./AssetPanel";
 import CanvasPreview from "./CanvasPreview";
@@ -16,6 +17,7 @@ import { isVideoFile, isImageFile, isAudioFile } from "@/lib/media";
 import { v4 as uuidv4 } from "uuid";
 
 export default function EditorLayout() {
+  const searchParams = useSearchParams();
   const [timeline, setTimeline] = useState<Timeline | null>(null);
   const [suggestions, setSuggestions] = useState<Record<string, unknown> | null>(null);
   const [activeSceneId, setActiveSceneId] = useState<string | null>(null);
@@ -63,9 +65,65 @@ export default function EditorLayout() {
     setOutroConfig(prev => prev ? { ...prev, ...patch } : prev);
   }, []);
 
-  // Text Studio state
+  // Text Studio state (declared early so autosave useEffect can reference captions)
   const [captions, setCaptions] = useState<StudioCaption[]>([]);
   const [selectedCaptionId, setSelectedCaptionId] = useState<string | null>(null);
+
+  // Draft state
+  const [draftId, setDraftId] = useState<string>(() => uuidv4());
+  const [draftName, setDraftName] = useState("Untitled Draft");
+  const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Load draft from URL ?draft= param on mount
+  useEffect(() => {
+    const paramDraftId = searchParams.get("draft");
+    if (!paramDraftId) return;
+    fetch(`/api/drafts/${paramDraftId}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!data?.draft) return;
+        const d = data.draft;
+        setDraftId(d.id);
+        setDraftName(d.name ?? "Untitled Draft");
+        if (d.timelineData) {
+          setTimeline(d.timelineData);
+          setActiveSceneId(d.timelineData.scenes?.[0]?.id ?? null);
+        }
+        if (d.captionsData) setCaptions(d.captionsData);
+        if (d.brandSettings) setBrandOverrides(d.brandSettings);
+        if (d.aspectRatio) setAspectRatio(d.aspectRatio);
+        if (typeof d.currentPlayhead === "number") setCurrentTime(d.currentPlayhead);
+      })
+      .catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Autosave whenever timeline/captions/brandOverrides changes
+  useEffect(() => {
+    if (!timeline) return;
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    autoSaveTimerRef.current = setTimeout(async () => {
+      setAutoSaveStatus("saving");
+      try {
+        await fetch(`/api/drafts/${draftId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: draftName,
+            timelineData: timeline,
+            captionsData: captions.length ? captions : null,
+            brandSettings: Object.values(brandOverrides).some(Boolean) ? brandOverrides : null,
+            aspectRatio,
+            currentPlayhead: currentTime,
+            status: "draft",
+          }),
+        });
+        setAutoSaveStatus("saved");
+        setTimeout(() => setAutoSaveStatus("idle"), 2500);
+      } catch { setAutoSaveStatus("idle"); }
+    }, 3000);
+    return () => { if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current); };
+  }, [timeline, captions, brandOverrides, aspectRatio]); // eslint-disable-line react-hooks/exhaustive-deps
   const [showGrid, setShowGrid] = useState(false);
   const [showSafeZones, setShowSafeZones] = useState(false);
   const [showThirds, setShowThirds] = useState(false);
@@ -438,8 +496,8 @@ export default function EditorLayout() {
               <polygon points="5 3 19 12 5 21 5 3" />
             </svg>
           </div>
-          <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", letterSpacing: "0.07em" }}>
-            FRAMEAI
+          <span style={{ fontSize: 13, fontWeight: 700, background: "linear-gradient(90deg, #7c3aed, #06b6d4)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", letterSpacing: "0.07em" }}>
+            VydeoAI
           </span>
         </div>
 
@@ -558,15 +616,33 @@ export default function EditorLayout() {
             </>
           )}
 
+          {/* Autosave indicator */}
+          {autoSaveStatus !== "idle" && (
+            <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: autoSaveStatus === "saved" ? "#34d399" : "var(--text-muted)" }}>
+              {autoSaveStatus === "saving" ? (
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ animation: "spin 1s linear infinite" }}>
+                  <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                </svg>
+              ) : (
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+              )}
+              {autoSaveStatus === "saving" ? "Saving…" : "Saved"}
+            </div>
+          )}
+          {/* Home link */}
+          <a href="/" style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 32, height: 32, borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--text-muted)", textDecoration: "none", flexShrink: 0 }}
+            title="Back to Home">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          </a>
           {/* User avatar */}
           <div style={{
             width: 36, height: 36, borderRadius: "50%",
-            background: "linear-gradient(135deg, #c9a96e, #8a6e3e)",
+            background: "linear-gradient(135deg, #7c3aed, #06b6d4)",
             display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 14, fontWeight: 700, color: "#0e0e0f",
+            fontSize: 13, fontWeight: 700, color: "#ffffff",
             cursor: "pointer", flexShrink: 0,
           }}>
-            D
+            V
           </div>
         </div>
       </div>

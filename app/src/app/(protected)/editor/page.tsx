@@ -1,5 +1,5 @@
 import EditorLayout from "@/components/editor/EditorLayout";
 
-export default function Home() {
+export default function EditorPage() {
   return <EditorLayout />;
 }

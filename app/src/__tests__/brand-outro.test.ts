@@ -54,12 +54,12 @@ describe("OUTRO_PRESETS", () => {
 
 describe("OutroTemplate mutations", () => {
   it("patch merges correctly", () => {
-    const base: OutroTemplate = { ...DEFAULT_OUTRO };
+    const base: OutroTemplate = { ...OUTRO_PRESETS[0] };
     const patch: Partial<OutroTemplate> = { brandName: "New Brand", duration: 6 };
     const merged = { ...base, ...patch };
     expect(merged.brandName).toBe("New Brand");
     expect(merged.duration).toBe(6);
-    expect(merged.backgroundColor).toBe(DEFAULT_OUTRO.backgroundColor);
+    expect(merged.backgroundColor).toBe(OUTRO_PRESETS[0].backgroundColor);
   });
 
   it("can toggle logo off", () => {
@@ -69,9 +69,11 @@ describe("OutroTemplate mutations", () => {
 
   it("can apply a preset by spreading", () => {
     const preset = OUTRO_PRESETS[0];
-    const applied: OutroTemplate = { ...DEFAULT_OUTRO, ...preset };
+    // DEFAULT_OUTRO lacks id/name, so we start from a preset and override
+    const applied: OutroTemplate = { ...preset, brandName: "Custom" };
     expect(applied.id).toBe(preset.id);
     expect(applied.name).toBe(preset.name);
+    expect(applied.brandName).toBe("Custom");
   });
 });
 

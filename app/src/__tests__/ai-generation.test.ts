@@ -95,7 +95,7 @@ describe("AI Generation – image endpoint", () => {
 
 describe("AI Generation – URL extraction", () => {
   it("extracts url from imageUrl field", async () => {
-    const data = { imageUrl: "data:image/png;base64,abc" };
+    const data: { url?: string; imageUrl?: string } = { imageUrl: "data:image/png;base64,abc" };
     const url = data.url ?? data.imageUrl;
     expect(url).toBe("data:image/png;base64,abc");
   });
