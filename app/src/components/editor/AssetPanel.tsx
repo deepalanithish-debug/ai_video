@@ -422,11 +422,12 @@ function TransitionsTab({
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [applyAllDur, setApplyAllDur] = useState(0.5);
   const [noSceneMsg, setNoSceneMsg] = useState(false);
+  const [applyAllFeedback, setApplyAllFeedback] = useState<string | null>(null);
 
   const scenes = timeline?.scenes ?? [];
   const activeScene = scenes.find(s => s.id === activeSceneId) ?? null;
   const activeType = activeScene?.transition?.type ?? "cut";
-  const hasTimeline = scenes.length > 1;
+  const hasTimeline = scenes.length > 0;
   const activeSceneIdx = scenes.findIndex(s => s.id === activeSceneId);
   const prevScene = activeSceneIdx > 0 ? scenes[activeSceneIdx - 1] : null;
 
@@ -658,9 +659,14 @@ function TransitionsTab({
               const def = TRANSITION_CATALOG.find(d => d.type === t);
               return (
                 <button key={t}
-                  onClick={() => scenes.forEach(s => onSceneUpdate(s.id, {
-                    transition: { type: t as import("@/types/timeline").TransitionType, duration: t === "cut" ? 0 : applyAllDur },
-                  }))}
+                  onClick={() => {
+                    scenes.forEach(s => onSceneUpdate(s.id, {
+                      transition: { type: t as import("@/types/timeline").TransitionType, duration: t === "cut" ? 0 : applyAllDur },
+                    }));
+                    const d = TRANSITION_CATALOG.find(d => d.type === t);
+                    setApplyAllFeedback(`Applied "${d?.label ?? t}" to all ${scenes.length} scene${scenes.length === 1 ? "" : "s"}`);
+                    setTimeout(() => setApplyAllFeedback(null), 2200);
+                  }}
                   style={{
                     flex: 1, padding: "7.5px 0", borderRadius: 7.5, cursor: "pointer",
                     border: "1px solid rgba(124,58,237,0.25)", background: "var(--bg-panel)",
@@ -684,6 +690,16 @@ function TransitionsTab({
               {applyAllDur.toFixed(1)}s
             </span>
           </div>
+          {applyAllFeedback && (
+            <div style={{
+              marginTop: 8, padding: "7px 12px", borderRadius: 8,
+              background: "rgba(52,211,153,0.12)", border: "1px solid rgba(52,211,153,0.3)",
+              color: "#34d399", fontSize: 12, textAlign: "center",
+              animation: "fadeIn 0.2s ease",
+            }}>
+              ✓ {applyAllFeedback}
+            </div>
+          )}
         </div>
       )}
 

@@ -30,6 +30,77 @@ interface DragState {
   centerY: number;
 }
 
+/* ── Caption animation keyframes injected once into document head ──────────── */
+const CAPT_ANIM_CSS = `
+@keyframes captFadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes captFadeOut { from { opacity: 1; } to { opacity: 0; } }
+@keyframes captSlideUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes captSlideDown { from { opacity: 0; transform: translateY(-16px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes captSlideLeft { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes captSlideRight { from { opacity: 0; transform: translateX(-20px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes captZoomIn { from { opacity: 0; transform: scale(0.75); } to { opacity: 1; transform: scale(1); } }
+@keyframes captZoomOut { from { opacity: 1; transform: scale(1); } to { opacity: 0; transform: scale(0.75); } }
+@keyframes captBounce {
+  0% { opacity: 0; transform: scale(0.3); }
+  50% { transform: scale(1.05); }
+  70% { transform: scale(0.95); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes captPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.04); } }
+@keyframes captGlow { 0%, 100% { text-shadow: inherit; } 50% { text-shadow: 0 0 12px rgba(255,255,255,0.8), 0 0 24px rgba(124,58,237,0.5); } }
+@keyframes captTypewriter { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0% 0 0); } }
+@keyframes captShake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-6px)} 40%{transform:translateX(6px)} 60%{transform:translateX(-4px)} 80%{transform:translateX(4px)} }
+`;
+
+function getCaptionAnimation(cap: StudioCaption, currentTime: number): string | undefined {
+  const dur = cap.animDuration ?? 0.4;
+  const entranceDone = currentTime > cap.startTime + dur;
+  const inExitPhase = currentTime > cap.endTime - dur;
+
+  // Exit animation (takes priority if in both phases)
+  if (inExitPhase && cap.exitAnim) {
+    const animMap: Record<string, string> = {
+      "fade-out":   "captFadeOut",
+      "zoom-out":   "captZoomOut",
+      "slide-down": "captSlideDown",
+      "slide-right":"captSlideRight",
+      "slide-left": "captSlideLeft",
+    };
+    const kf = animMap[cap.exitAnim];
+    if (kf) return `${kf} ${dur}s ease forwards`;
+  }
+
+  // Entrance animation (during first `dur` seconds of caption)
+  if (!entranceDone && cap.entranceAnim) {
+    const animMap: Record<string, string> = {
+      "fade-in":    "captFadeIn",
+      "slide-up":   "captSlideUp",
+      "slide-down": "captSlideDown",
+      "slide-left": "captSlideLeft",
+      "slide-right":"captSlideRight",
+      "zoom-in":    "captZoomIn",
+      "bounce":     "captBounce",
+      "typewriter": "captTypewriter",
+      "shake":      "captShake",
+    };
+    const kf = animMap[cap.entranceAnim];
+    if (kf) return `${kf} ${dur}s ease forwards`;
+  }
+
+  // Loop animation (during middle phase)
+  if (entranceDone && !inExitPhase && cap.loopAnim) {
+    const loopMap: Record<string, string> = {
+      "pulse": "captPulse",
+      "glow":  "captGlow",
+      "shake": "captShake",
+    };
+    const kf = loopMap[cap.loopAnim];
+    if (kf) return `${kf} 1.5s ease-in-out infinite`;
+  }
+
+  return undefined;
+}
+
 export default function CaptionLayer({
   captions, currentTime, selectedCaptionId, onCaptionSelect,
   onCaptionUpdate, showGrid, showSafeZones, showThirds, isPlaying,
@@ -38,6 +109,16 @@ export default function CaptionLayer({
   const dragRef = useRef<DragState | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
+
+  // Inject animation keyframes into document head once
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    if (document.getElementById("capt-anim-styles")) return;
+    const style = document.createElement("style");
+    style.id = "capt-anim-styles";
+    style.textContent = CAPT_ANIM_CSS;
+    document.head.appendChild(style);
+  }, []);
 
   const visibleCaptions = captions.filter(c =>
     c.visible && currentTime >= c.startTime && currentTime <= c.endTime
@@ -166,9 +247,15 @@ export default function CaptionLayer({
           ? `${cap.strokeWidth}px ${cap.strokeColor}`
           : undefined;
 
+        const animDur = cap.animDuration ?? 0.4;
+        const animPhase =
+          currentTime < cap.startTime + animDur ? "entrance" :
+          currentTime > cap.endTime - animDur ? "exit" : "loop";
+        const animStyle = getCaptionAnimation(cap, currentTime);
+
         return (
           <div
-            key={cap.id}
+            key={`${cap.id}-${animPhase}`}
             style={{
               position: "absolute",
               left: `${cap.x * 100}%`,
@@ -180,6 +267,7 @@ export default function CaptionLayer({
               userSelect: "none",
               outline: isSelected ? "1.5px solid rgba(201,169,110,0.9)" : "none",
               outlineOffset: 2,
+              animation: animStyle,
             }}
             onPointerDown={e => onPointerDown(e, cap.id, "move")}
             onDoubleClick={e => onDblClick(e, cap.id)}

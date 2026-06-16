@@ -81,7 +81,7 @@ export default function TimelinePanel({
   useEffect(() => {
     const el = scrollRef.current;
     if (!el || !timeline) return;
-    const TRACK_LABEL_W = 30;
+    const TRACK_LABEL_W = 32;
     const playheadLeft = TRACK_LABEL_W + currentTime * pixelsPerSecond;
     const { scrollLeft, clientWidth } = el;
     const margin = 80;
@@ -202,41 +202,43 @@ export default function TimelinePanel({
         </button>
       </div>
 
-      {/* Time ruler */}
-      <TimeRuler totalDuration={totalDuration} pixelsPerSecond={pixelsPerSecond} onSeek={onSeek} />
-
-      {/* Track area */}
+      {/* Track area (ruler lives inside so it scrolls together) */}
       <div
         ref={scrollRef}
         onPointerDown={(e) => {
           // Only seek if clicking on the background, not on scene chips
           if ((e.target as HTMLElement).closest('[data-scene-chip]')) return;
           if ((e.target as HTMLElement).closest('[data-caption-chip]')) return;
+          // Don't seek when clicking the ruler row itself (ruler has its own handler)
+          if ((e.target as HTMLElement).closest('[data-time-ruler]')) return;
           const el = e.currentTarget;
           const rect = el.getBoundingClientRect();
           const scrollLeft = el.scrollLeft;
-          const OFFSET = 30;
+          const OFFSET = 32;
           const x = e.clientX - rect.left + scrollLeft - OFFSET;
           onSeek(Math.max(0, Math.min(totalDuration, x / pixelsPerSecond)));
         }}
+        data-scroll-container
         style={{
           flex: 1,
           overflowX: "auto",
           overflowY: "hidden",
-          padding: "6px 12px 8px",
+          padding: "0 12px 8px",
           display: "flex",
           flexDirection: "column",
           gap: 4,
           position: "relative",
         }}
       >
+        {/* Time ruler — inside scroll container so it scrolls with tracks */}
+        <TimeRuler totalDuration={totalDuration} pixelsPerSecond={pixelsPerSecond} onSeek={onSeek} scrollLeft={scrollRef.current?.scrollLeft ?? 0} />
         {/* Moving playhead */}
         <div
           style={{
             position: "absolute",
             top: 0,
             bottom: 0,
-            left: 18 + 12 + currentTime * pixelsPerSecond,
+            left: 32 + currentTime * pixelsPerSecond,
             width: 1,
             background: "#7c3aed",
             boxShadow: "0 0 6px rgba(124,58,237,0.7)",
@@ -262,61 +264,65 @@ export default function TimelinePanel({
         {/* Video track */}
         <div style={{ display: "flex", alignItems: "center", gap: 0 }} ref={trackRef}>
           <TrackLabel>V</TrackLabel>
-          <div style={{ display: "flex", alignItems: "center", gap: 0, position: "relative" }}>
-            {/* Insert button before first clip */}
-            {onClipInsert && (
-              <InsertClipButton key="ins-0" position={0} onInsert={onClipInsert} />
-            )}
-            {(timeline.scenes ?? []).flatMap((scene, i) => {
+          <div style={{ position: "relative", height: 48, flexShrink: 0, width: totalDuration * pixelsPerSecond }}>
+            {(timeline.scenes ?? []).map((scene, i) => {
               const scenes = timeline.scenes ?? [];
+              const startTime = scenes.slice(0, i).reduce((sum, s) => sum + s.duration, 0);
               const assignedClip = clips.find((c) => c.id && c.assignedToSceneId === scene.id)
                 ?? clips.find((c) => c.objectUrl === scene.clipSrc);
-              const chip = (
-                <SceneChip
-                  key={scene.id}
-                  scene={scene}
-                  index={i}
-                  color={SCENE_COLORS[i % SCENE_COLORS.length]}
-                  pixelsPerSecond={pixelsPerSecond}
-                  isActive={scene.id === activeSceneId}
-                  onClick={() => onSceneSelect(scene.id)}
-                  onDurationChange={onSceneDurationChange}
-                  onSceneUpdate={onSceneUpdate}
-                  clip={assignedClip}
-                  isDragOver={dragOverIdx === i}
-                  onDragStart={(idx) => setDragFromIdx(idx)}
-                  onDragOver={(idx) => setDragOverIdx(idx)}
-                  onDrop={(idx) => {
-                    if (dragFromIdx !== null && dragFromIdx !== idx) {
-                      onScenesReorder?.(dragFromIdx, idx);
-                    }
-                    setDragFromIdx(null);
-                    setDragOverIdx(null);
-                  }}
-                />
+              return (
+                <div key={scene.id} data-scene-chip style={{
+                  position: "absolute",
+                  left: startTime * pixelsPerSecond,
+                  top: 0,
+                  width: scene.duration * pixelsPerSecond,
+                  height: "100%",
+                }}>
+                  <SceneChip
+                    scene={scene}
+                    index={i}
+                    color={SCENE_COLORS[i % SCENE_COLORS.length]}
+                    pixelsPerSecond={pixelsPerSecond}
+                    isActive={scene.id === activeSceneId}
+                    onClick={() => onSceneSelect(scene.id)}
+                    onDurationChange={onSceneDurationChange}
+                    onSceneUpdate={onSceneUpdate}
+                    clip={assignedClip}
+                    isDragOver={dragOverIdx === i}
+                    onDragStart={(idx) => setDragFromIdx(idx)}
+                    onDragOver={(idx) => setDragOverIdx(idx)}
+                    onDrop={(idx) => {
+                      if (dragFromIdx !== null && dragFromIdx !== idx) {
+                        onScenesReorder?.(dragFromIdx, idx);
+                      }
+                      setDragFromIdx(null);
+                      setDragOverIdx(null);
+                    }}
+                  />
+                </div>
               );
-              // Connector between scene[i] and scene[i+1].
-              // The transition belongs to the INCOMING scene (scene[i+1]) —
-              // CanvasPreview reads displayScene.transition which is the next scene.
-              const nextScene = scenes[i + 1];
-              const connector = (onSceneUpdate && nextScene) ? (
-                <TransitionConnector
-                  key={`tc-${scene.id}`}
-                  scene={nextScene}
-                  onOpenLibrary={() => setLibrarySceneId(nextScene.id)}
-                />
-              ) : null;
-              const inserter = onClipInsert ? (
-                <InsertClipButton key={`ins-${i + 1}`} position={i + 1} onInsert={onClipInsert} />
-              ) : null;
+            })}
 
-              if (i < scenes.length - 1) {
-                return connector
-                  ? [chip, connector, ...(inserter ? [inserter] : [])]
-                  : [chip, ...(inserter ? [inserter] : [])];
-              }
-              // Last chip — only append inserter (no connector)
-              return [chip, ...(inserter ? [inserter] : [])];
+            {/* Transition connectors as overlaid absolute buttons */}
+            {(timeline.scenes ?? []).slice(1).map((scene, i) => {
+              const scenes = timeline.scenes ?? [];
+              const boundaryTime = scenes.slice(0, i + 1).reduce((sum, s) => sum + s.duration, 0);
+              if (!onSceneUpdate) return null;
+              return (
+                <div key={`tc-${scene.id}`} style={{
+                  position: "absolute",
+                  left: boundaryTime * pixelsPerSecond,
+                  top: 0,
+                  transform: "translateX(-50%)",
+                  zIndex: 5,
+                  pointerEvents: "auto",
+                }}>
+                  <TransitionConnector
+                    scene={scene}
+                    onOpenLibrary={() => setLibrarySceneId(scene.id)}
+                  />
+                </div>
+              );
             })}
           </div>
         </div>
@@ -536,27 +542,32 @@ function TrackLabel({ children, style }: { children: React.ReactNode; style?: Re
   );
 }
 
-function TimeRuler({ totalDuration, pixelsPerSecond, onSeek }: { totalDuration: number; pixelsPerSecond: number; onSeek: (t: number) => void }) {
+function TimeRuler({ totalDuration, pixelsPerSecond, onSeek, scrollLeft }: { totalDuration: number; pixelsPerSecond: number; onSeek: (t: number) => void; scrollLeft: number }) {
   const marks = Array.from({ length: Math.ceil(totalDuration) + 1 }, (_, i) => i);
-  const OFFSET = 18 + 12; // track label width + padding
+  const OFFSET = 32; // track label width (20px) + left padding (12px)
 
   const seekFromEvent = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    // The ruler is inside the scrollable container, so we need scrollLeft to get true offset
+    const scrollEl = e.currentTarget.closest('[data-scroll-container]') as HTMLElement | null;
+    const sl = scrollEl?.scrollLeft ?? 0;
     const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left - OFFSET;
+    const x = e.clientX - rect.left + sl - OFFSET;
     onSeek(Math.max(0, Math.min(totalDuration, x / pixelsPerSecond)));
   }, [totalDuration, pixelsPerSecond, onSeek]);
 
   return (
     <div
+      data-time-ruler
       onPointerDown={e => { e.currentTarget.setPointerCapture(e.pointerId); seekFromEvent(e); }}
       onPointerMove={e => { if (e.buttons === 1) seekFromEvent(e); }}
       style={{
         height: 18, paddingLeft: OFFSET,
         display: "flex", alignItems: "flex-end",
-        overflowX: "hidden", flexShrink: 0,
+        flexShrink: 0,
         borderBottom: "1px solid rgba(124,58,237,0.1)",
         cursor: "col-resize", position: "relative",
         userSelect: "none",
+        minWidth: totalDuration * pixelsPerSecond + OFFSET,
       }}
     >
       {marks.map((t) => (
@@ -589,8 +600,7 @@ function SceneChip({
   onDragOver?: (idx: number) => void;
   onDrop?: (idx: number) => void;
 }) {
-  const width = scene.duration * pixelsPerSecond;
-  const chipWidth = Math.max(width - 2, 32);
+  const chipWidth = "100%";
   const transIcon = TRANSITION_ICONS[scene.transition?.type ?? "cut"] ?? "⟶";
   const dragRef = useRef<{ startX: number; startDur: number } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
