@@ -288,23 +288,30 @@ export default function VibeChat({ isOpen, onClose, onDraftCreated }: VibeChatPr
         }
 
         // Parse result metadata
-        const scenes: number = data.timeline?.scenes?.length ?? data.scenes ?? 0;
+        const scenes: number = data.lineup?.timeline?.scenes?.length ?? data.timeline?.scenes?.length ?? 0;
         const seconds: number =
+          data.lineup?.timeline?.totalDuration ??
           data.timeline?.total_duration ??
           data.totalDuration ??
           data.duration ??
           30;
         const mood: string =
+          data.lineup?.timeline?.mood ??
           data.timeline?.mood ??
           data.mood ??
           "cinematic";
         const draftId: string =
           data.draftId ?? data.draft_id ?? data.id ?? String(Date.now());
+        const hadClips = Boolean(attachment);
 
-        const successContent =
-          `I've built your video! Here's what I created:\n\n` +
-          `📽️ ${scenes} scenes · ${seconds}s total · ${mood} transitions and captions.\n\n` +
-          `Tap "Continue in Editor" to start editing.`;
+        const successContent = hadClips
+          ? `Your video is ready! Here's what I built:\n\n` +
+            `📽️ ${scenes} scenes · ~${Math.round(seconds)}s total · ${mood} feel\n\n` +
+            `I've assigned your clips to each scene with captions and transitions. Tap "Continue in Editor" to fine-tune.`
+          : `I've built a complete storyboard for your video!\n\n` +
+            `📋 ${scenes} scenes · ~${Math.round(seconds)}s total · ${mood} feel\n\n` +
+            `Since you didn't upload any clips, this is a creative shot list — each scene has a description of what to film. ` +
+            `Open the editor to see the full plan, then upload your footage to fill each scene.`;
 
         const vibeMsg: Message = {
           id: `vibe-${Date.now()}`,
