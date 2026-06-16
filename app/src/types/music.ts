@@ -1,171 +1,182 @@
 export type MusicCategory =
-  | "cinematic" | "travel" | "luxury" | "ugc"
-  | "corporate" | "product-ads" | "energetic" | "emotional";
+  | "cinematic"
+  | "travel"
+  | "luxury"
+  | "ugc"
+  | "corporate"
+  | "product-ads"
+  | "energetic"
+  | "emotional";
 
 export interface MusicTrack {
   id: string;
   title: string;
   artist: string;
-  duration: number; // seconds
+  duration: number;
   category: MusicCategory;
-  bpm?: number;
+  bpm: number;
   tags: string[];
   previewUrl: string;
-  waveform: number[]; // 40 normalized values 0-1 for visualization
+  waveform: number[];
   mood: string;
   isRoyaltyFree: boolean;
 }
 
 export interface ActiveTrack {
   trackId: string;
-  volume: number; // 0-1
+  volume: number;
   muted: boolean;
-  fadeIn: number; // seconds
+  fadeIn: number;
   fadeOut: number;
-  startTime: number; // timeline start position
+  startTime: number;
   trimStart: number;
   trimEnd: number;
 }
 
 export interface AudioSettings {
-  masterMusicVolume: number; // 0-1
-  videoAudioVolume: number;  // 0-1
+  masterMusicVolume: number;
+  videoAudioVolume: number;
   autoLevelingEnabled: boolean;
   voiceIsolationEnabled: boolean;
-  voiceIsolationStrength: number; // 0-1
+  voiceIsolationStrength: number;
   noiseReductionEnabled: boolean;
-  noiseReductionStrength: number; // 0-1
+  noiseReductionStrength: number;
 }
 
 export const DEFAULT_AUDIO_SETTINGS: AudioSettings = {
-  masterMusicVolume: 0.7,
-  videoAudioVolume: 1.0,
+  masterMusicVolume: 80,
+  videoAudioVolume: 100,
   autoLevelingEnabled: false,
   voiceIsolationEnabled: false,
-  voiceIsolationStrength: 0.6,
+  voiceIsolationStrength: 70,
   noiseReductionEnabled: false,
-  noiseReductionStrength: 0.5,
+  noiseReductionStrength: 60,
 };
 
-// Royalty-free tracks using Pixabay public audio URLs
+// Helper — route all audio through the Next.js proxy to avoid CORS issues
+function proxy(url: string) {
+  return `/api/audio-proxy?url=${encodeURIComponent(url)}`;
+}
+
+// Royalty-free tracks from Bensound (bensound.com) via local proxy
 export const MUSIC_LIBRARY: MusicTrack[] = [
   // ── Cinematic ──
   {
-    id: "cin-01", title: "Epic Horizon", artist: "Pixabay",
+    id: "cin-01", title: "Epic", artist: "Bensound",
     duration: 150, category: "cinematic", bpm: 90,
-    tags: ["epic","orchestral","dramatic"], mood: "powerful",
-    previewUrl: "https://cdn.pixabay.com/download/audio/2022/01/18/audio_d0c37bfbb3.mp3",
+    tags: ["epic", "orchestral", "dramatic"], mood: "powerful",
+    previewUrl: proxy("https://www.bensound.com/bensound-music/bensound-epic.mp3"),
     waveform: [0.3,0.5,0.7,0.9,1,0.8,0.6,0.8,0.9,0.7,0.5,0.6,0.7,0.8,0.9,1,0.8,0.7,0.6,0.5,0.4,0.5,0.7,0.9,1,0.8,0.6,0.5,0.4,0.3,0.4,0.6,0.8,0.9,0.7,0.5,0.4,0.3,0.4,0.5],
     isRoyaltyFree: true,
   },
   {
-    id: "cin-02", title: "Cinematic Tension", artist: "Pixabay",
+    id: "cin-02", title: "Cinematic Ambient", artist: "Bensound",
     duration: 120, category: "cinematic", bpm: 75,
-    tags: ["tension","suspense","dark"], mood: "intense",
-    previewUrl: "https://cdn.pixabay.com/download/audio/2022/03/10/audio_270f29b344.mp3",
+    tags: ["ambient", "atmospheric", "film"], mood: "intense",
+    previewUrl: proxy("https://www.bensound.com/bensound-music/bensound-cinematicambient.mp3"),
     waveform: [0.2,0.3,0.5,0.6,0.8,0.9,0.7,0.6,0.5,0.4,0.5,0.6,0.7,0.8,0.9,1,0.8,0.7,0.6,0.5,0.4,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.8,0.7,0.6,0.5,0.4,0.3,0.4,0.5,0.6,0.7,0.5,0.3],
     isRoyaltyFree: true,
   },
   // ── Luxury ──
   {
-    id: "lux-01", title: "Golden Moments", artist: "Pixabay",
+    id: "lux-01", title: "Perception", artist: "Bensound",
     duration: 180, category: "luxury", bpm: 72,
-    tags: ["elegant","piano","sophisticated"], mood: "elegant",
-    previewUrl: "https://cdn.pixabay.com/download/audio/2022/10/30/audio_a346e9e46a.mp3",
+    tags: ["elegant", "piano", "sophisticated"], mood: "elegant",
+    previewUrl: proxy("https://www.bensound.com/bensound-music/bensound-perception.mp3"),
     waveform: [0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.8,0.7,0.6,0.5,0.4,0.5,0.6,0.7,0.8,0.7,0.6,0.5,0.4,0.5,0.6,0.7,0.8,0.9,0.8,0.7,0.6,0.5,0.4,0.3,0.4,0.5,0.6,0.7,0.8,0.7,0.5,0.3],
     isRoyaltyFree: true,
   },
   {
-    id: "lux-02", title: "Crystal Ambience", artist: "Pixabay",
+    id: "lux-02", title: "Slow Motion", artist: "Bensound",
     duration: 165, category: "luxury", bpm: 65,
-    tags: ["ambient","luxury","modern"], mood: "serene",
-    previewUrl: "https://cdn.pixabay.com/download/audio/2022/08/02/audio_884fe92c21.mp3",
+    tags: ["slow", "luxury", "modern"], mood: "serene",
+    previewUrl: proxy("https://www.bensound.com/bensound-music/bensound-slowmotion.mp3"),
     waveform: [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.6,0.5,0.4,0.3,0.4,0.5,0.6,0.7,0.8,0.7,0.6,0.5,0.4,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.8,0.7,0.6,0.5,0.4,0.3,0.4,0.5,0.6,0.7,0.6,0.4,0.2],
     isRoyaltyFree: true,
   },
   // ── Energetic ──
   {
-    id: "ener-01", title: "Pump It Up", artist: "Pixabay",
+    id: "ener-01", title: "Dubstep", artist: "Bensound",
     duration: 135, category: "energetic", bpm: 128,
-    tags: ["edm","electronic","hype"], mood: "hyped",
-    previewUrl: "https://cdn.pixabay.com/download/audio/2022/05/17/audio_1808fbf07a.mp3",
+    tags: ["edm", "electronic", "hype"], mood: "hyped",
+    previewUrl: proxy("https://www.bensound.com/bensound-music/bensound-dubstep.mp3"),
     waveform: [0.8,1,0.9,1,0.8,0.9,1,0.8,0.7,0.9,1,0.8,0.9,1,0.8,0.7,0.8,0.9,1,0.9,0.8,1,0.9,0.8,0.7,0.9,1,0.8,0.9,1,0.9,0.8,0.7,0.8,0.9,1,0.9,0.8,0.9,1],
     isRoyaltyFree: true,
   },
   {
-    id: "ener-02", title: "Neon Rush", artist: "Pixabay",
+    id: "ener-02", title: "Action Struck", artist: "Bensound",
     duration: 110, category: "energetic", bpm: 135,
-    tags: ["bass","trap","modern"], mood: "aggressive",
-    previewUrl: "https://cdn.pixabay.com/download/audio/2022/10/25/audio_cca7f19590.mp3",
+    tags: ["action", "intense", "power"], mood: "aggressive",
+    previewUrl: proxy("https://www.bensound.com/bensound-music/bensound-actionstruck.mp3"),
     waveform: [0.9,1,0.8,1,0.9,0.8,1,0.9,0.7,1,0.8,0.9,1,0.8,0.7,0.9,1,0.8,0.9,0.7,0.8,1,0.9,0.8,0.7,0.9,1,0.8,0.7,0.9,1,0.8,0.9,1,0.7,0.8,0.9,1,0.9,0.8],
     isRoyaltyFree: true,
   },
   // ── Travel ──
   {
-    id: "trv-01", title: "Open Roads", artist: "Pixabay",
+    id: "trv-01", title: "Ukulele", artist: "Bensound",
     duration: 195, category: "travel", bpm: 110,
-    tags: ["adventure","uplifting","acoustic"], mood: "adventurous",
-    previewUrl: "https://cdn.pixabay.com/download/audio/2022/01/20/audio_d0ef5e43e1.mp3",
+    tags: ["adventure", "uplifting", "acoustic"], mood: "adventurous",
+    previewUrl: proxy("https://www.bensound.com/bensound-music/bensound-ukulele.mp3"),
     waveform: [0.4,0.5,0.6,0.7,0.8,0.9,0.8,0.7,0.6,0.7,0.8,0.9,0.8,0.7,0.6,0.5,0.6,0.7,0.8,0.9,1,0.9,0.8,0.7,0.6,0.7,0.8,0.9,0.8,0.7,0.6,0.5,0.6,0.7,0.8,0.9,0.8,0.7,0.5,0.4],
     isRoyaltyFree: true,
   },
   {
-    id: "trv-02", title: "Wanderlust Vibes", artist: "Pixabay",
+    id: "trv-02", title: "Sunny", artist: "Bensound",
     duration: 155, category: "travel", bpm: 95,
-    tags: ["chill","indie","guitar"], mood: "free-spirited",
-    previewUrl: "https://cdn.pixabay.com/download/audio/2022/03/15/audio_d0c5b01ddb.mp3",
+    tags: ["chill", "upbeat", "happy"], mood: "free-spirited",
+    previewUrl: proxy("https://www.bensound.com/bensound-music/bensound-sunny.mp3"),
     waveform: [0.3,0.4,0.5,0.6,0.7,0.8,0.7,0.6,0.5,0.4,0.5,0.6,0.7,0.8,0.9,0.8,0.7,0.6,0.5,0.4,0.5,0.6,0.7,0.8,0.7,0.6,0.5,0.6,0.7,0.8,0.9,0.8,0.7,0.6,0.5,0.4,0.5,0.6,0.7,0.5],
     isRoyaltyFree: true,
   },
   // ── UGC ──
   {
-    id: "ugc-01", title: "Feel Good Vibes", artist: "Pixabay",
+    id: "ugc-01", title: "Happiness", artist: "Bensound",
     duration: 145, category: "ugc", bpm: 115,
-    tags: ["upbeat","fun","social"], mood: "cheerful",
-    previewUrl: "https://cdn.pixabay.com/download/audio/2022/11/22/audio_febc508520.mp3",
+    tags: ["upbeat", "fun", "social"], mood: "cheerful",
+    previewUrl: proxy("https://www.bensound.com/bensound-music/bensound-happiness.mp3"),
     waveform: [0.5,0.6,0.7,0.8,0.9,0.8,0.7,0.6,0.7,0.8,0.9,1,0.8,0.7,0.6,0.5,0.6,0.7,0.8,0.9,0.8,0.7,0.6,0.5,0.6,0.7,0.8,0.9,0.8,0.7,0.6,0.7,0.8,0.9,0.8,0.7,0.6,0.5,0.6,0.7],
     isRoyaltyFree: true,
   },
   {
-    id: "ugc-02", title: "TikTok Ready", artist: "Pixabay",
+    id: "ugc-02", title: "Funky Element", artist: "Bensound",
     duration: 90, category: "ugc", bpm: 120,
-    tags: ["trending","pop","catchy"], mood: "trendy",
-    previewUrl: "https://cdn.pixabay.com/download/audio/2022/08/23/audio_3b19d08fa9.mp3",
+    tags: ["funky", "pop", "catchy"], mood: "trendy",
+    previewUrl: proxy("https://www.bensound.com/bensound-music/bensound-funkyelement.mp3"),
     waveform: [0.6,0.7,0.8,0.9,1,0.9,0.8,0.7,0.8,0.9,1,0.9,0.8,0.7,0.6,0.7,0.8,0.9,1,0.9,0.8,0.7,0.8,0.9,1,0.9,0.8,0.7,0.6,0.7,0.8,0.9,1,0.9,0.8,0.7,0.8,0.9,0.8,0.7],
     isRoyaltyFree: true,
   },
   // ── Corporate ──
   {
-    id: "corp-01", title: "Professional Edge", artist: "Pixabay",
+    id: "corp-01", title: "Corporate", artist: "Bensound",
     duration: 200, category: "corporate", bpm: 100,
-    tags: ["corporate","clean","motivational"], mood: "confident",
-    previewUrl: "https://cdn.pixabay.com/download/audio/2022/03/24/audio_c8f0af9b10.mp3",
+    tags: ["corporate", "clean", "motivational"], mood: "confident",
+    previewUrl: proxy("https://www.bensound.com/bensound-music/bensound-corporate.mp3"),
     waveform: [0.3,0.4,0.5,0.6,0.7,0.8,0.7,0.6,0.5,0.6,0.7,0.8,0.7,0.6,0.5,0.4,0.5,0.6,0.7,0.8,0.9,0.8,0.7,0.6,0.5,0.4,0.5,0.6,0.7,0.8,0.7,0.6,0.5,0.4,0.5,0.6,0.7,0.8,0.6,0.4],
     isRoyaltyFree: true,
   },
   // ── Product Ads ──
   {
-    id: "prod-01", title: "Showcase Ready", artist: "Pixabay",
+    id: "prod-01", title: "Creative Minds", artist: "Bensound",
     duration: 60, category: "product-ads", bpm: 108,
-    tags: ["commercial","bright","crisp"], mood: "premium",
-    previewUrl: "https://cdn.pixabay.com/download/audio/2022/10/07/audio_1a609d8ce0.mp3",
+    tags: ["commercial", "bright", "crisp"], mood: "premium",
+    previewUrl: proxy("https://www.bensound.com/bensound-music/bensound-creativeminds.mp3"),
     waveform: [0.4,0.5,0.6,0.7,0.8,0.9,0.8,0.7,0.8,0.9,0.8,0.7,0.6,0.7,0.8,0.9,0.8,0.7,0.6,0.5,0.6,0.7,0.8,0.9,0.8,0.7,0.6,0.7,0.8,0.9,0.8,0.7,0.6,0.5,0.6,0.7,0.8,0.7,0.5,0.4],
     isRoyaltyFree: true,
   },
   {
-    id: "prod-02", title: "Minimalist Launch", artist: "Pixabay",
+    id: "prod-02", title: "Little Idea", artist: "Bensound",
     duration: 75, category: "product-ads", bpm: 92,
-    tags: ["minimal","clean","modern"], mood: "sleek",
-    previewUrl: "https://cdn.pixabay.com/download/audio/2022/06/09/audio_fce4278a14.mp3",
+    tags: ["minimal", "clean", "modern"], mood: "sleek",
+    previewUrl: proxy("https://www.bensound.com/bensound-music/bensound-littleidea.mp3"),
     waveform: [0.2,0.3,0.4,0.5,0.6,0.7,0.6,0.5,0.6,0.7,0.8,0.7,0.6,0.5,0.4,0.5,0.6,0.7,0.8,0.9,0.8,0.7,0.6,0.5,0.4,0.5,0.6,0.7,0.8,0.7,0.6,0.5,0.4,0.3,0.4,0.5,0.6,0.7,0.5,0.3],
     isRoyaltyFree: true,
   },
   // ── Emotional ──
   {
-    id: "emo-01", title: "Heartfelt Story", artist: "Pixabay",
+    id: "emo-01", title: "Memories", artist: "Bensound",
     duration: 240, category: "emotional", bpm: 68,
-    tags: ["piano","strings","touching"], mood: "emotional",
-    previewUrl: "https://cdn.pixabay.com/download/audio/2022/04/27/audio_17012035c0.mp3",
+    tags: ["piano", "strings", "touching"], mood: "emotional",
+    previewUrl: proxy("https://www.bensound.com/bensound-music/bensound-memories.mp3"),
     waveform: [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.8,0.7,0.6,0.5,0.4,0.5,0.6,0.7,0.8,0.9,1,0.9,0.8,0.7,0.6,0.5,0.4,0.5,0.6,0.7,0.8,0.9,0.8,0.7,0.6,0.5,0.4,0.3,0.4,0.3,0.2],
     isRoyaltyFree: true,
   },

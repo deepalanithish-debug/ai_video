@@ -492,12 +492,16 @@ export default function EditorLayout() {
           pointerEvents: "none",
         }} />
 
-        {/* Logo */}
-        <div style={{
+        {/* Logo — clicks go to home */}
+        <a href="/" style={{
           width: 130, display: "flex", alignItems: "center", gap: 9,
           padding: "0 18px", borderRight: "1px solid rgba(124,58,237,0.2)",
-          flexShrink: 0,
-        }}>
+          flexShrink: 0, textDecoration: "none", cursor: "pointer",
+          transition: "opacity 0.15s ease",
+        }}
+          onMouseEnter={e => { (e.currentTarget as HTMLAnchorElement).style.opacity = "0.8"; }}
+          onMouseLeave={e => { (e.currentTarget as HTMLAnchorElement).style.opacity = "1"; }}
+        >
           <div style={{
             width: 30, height: 30, borderRadius: 8,
             background: "linear-gradient(135deg, #7c3aed, #06b6d4)",
@@ -511,7 +515,7 @@ export default function EditorLayout() {
           <span style={{ fontSize: 14, fontWeight: 700, background: "linear-gradient(90deg, #a78bfa, #06b6d4)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", letterSpacing: "0.07em" }}>
             VydeoAI
           </span>
-        </div>
+        </a>
 
         {/* Prompt bar + metadata chips — flex-1 */}
         <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "stretch", borderRight: "1px solid rgba(124,58,237,0.2)" }}>
@@ -628,21 +632,24 @@ export default function EditorLayout() {
             </>
           )}
 
-          {/* Home link */}
+          {/* Home link — highlighted */}
           <a
             href="/"
             title="Back to Home"
             style={{
               display: "flex", alignItems: "center", justifyContent: "center",
-              width: 32, height: 32, borderRadius: 7,
-              border: "1px solid rgba(124,58,237,0.2)",
-              background: "transparent", color: "var(--text-muted)",
+              gap: 6, padding: "0 12px", height: 32, borderRadius: 7,
+              background: "rgba(124,58,237,0.18)",
+              border: "1px solid rgba(124,58,237,0.45)",
+              color: "#a78bfa", fontSize: 12, fontWeight: 600,
               textDecoration: "none", flexShrink: 0, transition: "all 0.15s ease",
+              letterSpacing: "0.02em",
             }}
-            onMouseEnter={e => { (e.currentTarget as HTMLAnchorElement).style.borderColor = "rgba(124,58,237,0.5)"; (e.currentTarget as HTMLAnchorElement).style.color = "#a78bfa"; (e.currentTarget as HTMLAnchorElement).style.transform = "translateY(-1px)"; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLAnchorElement).style.borderColor = "rgba(124,58,237,0.2)"; (e.currentTarget as HTMLAnchorElement).style.color = "var(--text-muted)"; (e.currentTarget as HTMLAnchorElement).style.transform = "translateY(0)"; }}
+            onMouseEnter={e => { (e.currentTarget as HTMLAnchorElement).style.background = "rgba(124,58,237,0.32)"; (e.currentTarget as HTMLAnchorElement).style.borderColor = "rgba(124,58,237,0.7)"; (e.currentTarget as HTMLAnchorElement).style.transform = "translateY(-1px)"; (e.currentTarget as HTMLAnchorElement).style.boxShadow = "0 0 12px rgba(124,58,237,0.35)"; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLAnchorElement).style.background = "rgba(124,58,237,0.18)"; (e.currentTarget as HTMLAnchorElement).style.borderColor = "rgba(124,58,237,0.45)"; (e.currentTarget as HTMLAnchorElement).style.transform = "translateY(0)"; (e.currentTarget as HTMLAnchorElement).style.boxShadow = "none"; }}
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+            Home
           </a>
 
           {/* User avatar */}

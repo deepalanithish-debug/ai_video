@@ -437,7 +437,7 @@ function UploadedTab({
     artist: "Uploaded",
     duration: ua.duration ?? 0,
     category: "ugc",
-    bpm: undefined,
+    bpm: 0,
     tags: ["uploaded"],
     previewUrl: ua.objectUrl ?? "",
     waveform: Array.from({ length: 40 }, (_, i) => 0.3 + 0.5 * Math.abs(Math.sin(i * 0.6))),

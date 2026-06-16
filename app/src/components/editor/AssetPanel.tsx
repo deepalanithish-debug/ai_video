@@ -81,7 +81,7 @@ interface AssetPanelProps {
   onAddMusicToTimeline?: (track: MusicTrack) => void;
 }
 
-type NavTab = "media" | "transitions" | "text" | "music" | "elements" | "brand" | "ai";
+type NavTab = "media" | "transitions" | "text" | "music" | "brand" | "ai";
 
 const NAV_ITEMS: { id: NavTab; label: string; icon: React.ReactNode }[] = [
   {
@@ -114,15 +114,6 @@ const NAV_ITEMS: { id: NavTab; label: string; icon: React.ReactNode }[] = [
     icon: (
       <svg width="25.5" height="25.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
         <path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" />
-      </svg>
-    ),
-  },
-  {
-    id: "elements", label: "Elements",
-    icon: (
-      <svg width="25.5" height="25.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-        <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" />
-        <rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" />
       </svg>
     ),
   },
@@ -181,18 +172,6 @@ export default function AssetPanel({
   const [activeTab, setActiveTab] = useState<NavTab>("transitions");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const audioInputRef = useRef<HTMLInputElement>(null);
-  const [historyItems, setHistoryItems] = useState<HistoryEntry[]>([]);
-  const [historyLoading, setHistoryLoading] = useState(false);
-
-  useEffect(() => {
-    if (activeTab !== "elements") return;
-    setHistoryLoading(true);
-    fetch(`/api/generations?workspaceSlug=${encodeURIComponent(workspaceSlug)}&limit=20`)
-      .then(r => r.json())
-      .then((d: { generations: HistoryEntry[] }) => setHistoryItems(d.generations ?? []))
-      .catch(() => {})
-      .finally(() => setHistoryLoading(false));
-  }, [activeTab, workspaceSlug]);
 
   return (
     <div style={{ display: "flex", height: "100%", flexShrink: 0 }}>
@@ -309,9 +288,6 @@ export default function AssetPanel({
               timeline={timeline}
               onAddMusicToTimeline={onAddMusicToTimeline}
             />
-          )}
-          {activeTab === "elements" && (
-            <ElementsTab historyItems={historyItems} loading={historyLoading} onLoadGeneration={onLoadGeneration} />
           )}
           {activeTab === "brand" && (
             <BrandTab
