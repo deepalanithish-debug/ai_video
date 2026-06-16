@@ -216,3 +216,10 @@ textarea:focus, input:focus {
 /* Purple scrollbars for panels */
 .purple-scroll::-webkit-scrollbar-thumb { background: rgba(124,58,237,0.3); }
 .purple-scroll::-webkit-scrollbar-thumb:hover { background: rgba(124,58,237,0.55); }
+
+/* Sparkle pulse for empty state */
+@keyframes sparklePulse {
+  0%, 100% { opacity: 0.6; transform: scale(1) rotate(0deg); }
+  50%       { opacity: 1;   transform: scale(1.2) rotate(15deg); }
+}
+.sparkle-icon { animation: sparklePulse 2s ease-in-out infinite; display: inline-block; }

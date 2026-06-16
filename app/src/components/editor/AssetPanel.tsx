@@ -183,8 +183,8 @@ export default function AssetPanel({
 
       {/* ── Icon sidebar ── */}
       <div style={{
-        width: 66, background: "#0f0f11",
-        borderRight: "1px solid var(--border-subtle)",
+        width: 66, background: "#08082a",
+        borderRight: "1px solid rgba(124,58,237,0.12)",
         display: "flex", flexDirection: "column", alignItems: "center",
         paddingTop: 12, gap: 3, flexShrink: 0,
       }}>
@@ -196,21 +196,22 @@ export default function AssetPanel({
               onClick={() => setActiveTab(item.id)}
               title={item.label}
               style={{
-                width: 60, height: 69, borderRadius: 10.5,
+                width: 60, height: 69, borderRadius: 10,
                 border: "none",
-                background: isActive ? "rgba(201,169,110,0.1)" : "transparent",
-                color: isActive ? "var(--accent)" : "var(--text-muted)",
+                background: isActive ? "rgba(124,58,237,0.18)" : "transparent",
+                color: isActive ? "#a78bfa" : "var(--text-muted)",
                 cursor: "pointer",
                 display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-                gap: 4.5, transition: "all 0.12s ease", position: "relative",
+                gap: 4.5, transition: "all 0.15s ease", position: "relative",
+                boxShadow: isActive ? "inset 0 0 20px rgba(124,58,237,0.08)" : "none",
               }}
-              onMouseEnter={e => { if (!isActive) { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.color = "var(--text-secondary)"; } }}
+              onMouseEnter={e => { if (!isActive) { e.currentTarget.style.background = "rgba(124,58,237,0.07)"; e.currentTarget.style.color = "#8888a8"; } }}
               onMouseLeave={e => { if (!isActive) { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--text-muted)"; } }}
             >
               {isActive && (
                 <div style={{
                   position: "absolute", left: 0, top: "50%", transform: "translateY(-50%)",
-                  width: 3.75, height: 24, background: "var(--accent)", borderRadius: "0 2px 2px 0",
+                  width: 3.75, height: 24, background: "linear-gradient(180deg, #7c3aed, #06b6d4)", borderRadius: "0 2px 2px 0",
                 }} />
               )}
               {item.icon}
@@ -232,21 +233,41 @@ export default function AssetPanel({
         {/* Panel title row */}
         <div style={{
           padding: "13.5px 18px 12px",
-          borderBottom: "1px solid var(--border-subtle)",
-          display: "flex", alignItems: "center", justifyContent: "space-between",
+          background: "linear-gradient(180deg, #0d0d22 0%, #09091e 100%)",
+          borderBottom: "1px solid rgba(124,58,237,0.15)",
           flexShrink: 0,
         }}>
-          <span style={{ fontSize: 17.25, fontWeight: 600, color: "var(--text-primary)" }}>
-            {NAV_ITEMS.find(n => n.id === activeTab)?.label}
-          </span>
-          {activeTab === "transitions" && (
-            <span style={{ fontSize: 14.25, color: "var(--text-muted)", cursor: "pointer" }}>
-              {(timeline?.scenes?.length ?? 0) > 0 ? `${timeline!.scenes.length} scenes` : ""}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <span style={{
+              fontSize: 17.25, fontWeight: 600,
+              background: "linear-gradient(135deg, #7c3aed 0%, #06b6d4 100%)",
+              WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text",
+            }}>
+              {NAV_ITEMS.find(n => n.id === activeTab)?.label}
             </span>
-          )}
-          {activeTab === "media" && clips.length > 0 && (
-            <span style={{ fontSize: 13.5, color: "var(--accent)", fontWeight: 600 }}>{clips.length} uploaded</span>
-          )}
+            {activeTab === "transitions" && (timeline?.scenes?.length ?? 0) > 0 && (
+              <span style={{
+                fontSize: 11, color: "#a78bfa", fontWeight: 600,
+                background: "rgba(124,58,237,0.15)", border: "1px solid rgba(124,58,237,0.3)",
+                borderRadius: 20, padding: "2px 9px",
+              }}>{timeline!.scenes.length} scenes</span>
+            )}
+            {activeTab === "media" && clips.length > 0 && (
+              <span style={{
+                fontSize: 11, color: "#a78bfa", fontWeight: 600,
+                background: "rgba(124,58,237,0.15)", border: "1px solid rgba(124,58,237,0.3)",
+                borderRadius: 20, padding: "2px 9px",
+              }}>{clips.length} uploaded</span>
+            )}
+          </div>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+            {activeTab === "transitions" && "Animated scene changes"}
+            {activeTab === "media" && "Clips & assets"}
+            {activeTab === "text" && "Captions & overlays"}
+            {activeTab === "music" && "Soundtrack & audio"}
+            {activeTab === "brand" && "Identity & outro"}
+            {activeTab === "ai" && "Generate assets"}
+          </div>
         </div>
 
         <div style={{ flex: 1, overflow: "auto", padding: "15px" }}>
@@ -400,6 +421,7 @@ function TransitionsTab({
   const [filterCat, setFilterCat] = useState("All");
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [applyAllDur, setApplyAllDur] = useState(0.5);
+  const [noSceneMsg, setNoSceneMsg] = useState(false);
 
   const scenes = timeline?.scenes ?? [];
   const activeScene = scenes.find(s => s.id === activeSceneId) ?? null;
@@ -417,7 +439,11 @@ function TransitionsTab({
   const popular = filtered.slice(0, 9);
 
   const handleApply = useCallback((type: string) => {
-    if (!activeSceneId || !onSceneUpdate) return;
+    if (!activeSceneId || !onSceneUpdate) {
+      setNoSceneMsg(true);
+      setTimeout(() => setNoSceneMsg(false), 2500);
+      return;
+    }
     const def = TRANSITION_CATALOG.find(d => d.type === type);
     const dur = type === "cut" || type === "hard-cut" ? 0 : (def?.defaultDuration ?? 0.5);
     onSceneUpdate(activeSceneId, {
@@ -426,7 +452,51 @@ function TransitionsTab({
   }, [activeSceneId, onSceneUpdate]);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 15 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 15, position: "relative" }}>
+
+      {/* Hero banner — current transition status */}
+      <div style={{
+        borderRadius: 12, padding: "12px 14px",
+        background: "rgba(124,58,237,0.06)",
+        border: "1px solid rgba(124,58,237,0.25)",
+        display: "flex", alignItems: "center", gap: 12,
+      }}>
+        {/* Icon */}
+        <div style={{
+          width: 36, height: 36, borderRadius: 8, flexShrink: 0,
+          background: "linear-gradient(135deg, rgba(124,58,237,0.3), rgba(6,182,212,0.2))",
+          border: "1px solid rgba(124,58,237,0.3)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" strokeWidth="1.8">
+            <rect x="2" y="6" width="8" height="12" rx="2" opacity="0.7"/>
+            <rect x="14" y="6" width="8" height="12" rx="2" opacity="0.7"/>
+            <path d="M10 12h4m-2-2 2 2-2 2" strokeWidth="1.6"/>
+          </svg>
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", letterSpacing: "0.08em", marginBottom: 2 }}>CURRENT TRANSITION</div>
+          {activeScene ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: "#a78bfa", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {TRANSITION_CATALOG.find(d => d.type === activeType)?.label ?? activeType}
+              </span>
+              {activeScene.transition?.duration ? (
+                <span style={{
+                  fontSize: 10, color: "#67e8f9", fontWeight: 600,
+                  background: "rgba(6,182,212,0.12)", border: "1px solid rgba(6,182,212,0.25)",
+                  borderRadius: 10, padding: "1px 7px", flexShrink: 0,
+                }}>{activeScene.transition.duration}s</span>
+              ) : null}
+            </div>
+          ) : (
+            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+              Select a scene below to change
+            </span>
+          )}
+        </div>
+      </div>
+
       {/* Search */}
       <div style={{ position: "relative" }}>
         <svg style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}
@@ -437,9 +507,9 @@ function TransitionsTab({
           type="text" value={search} onChange={e => setSearch(e.target.value)}
           placeholder="Search transitions..."
           style={{
-            width: "100%", background: "var(--bg-elevated)", border: "1px solid var(--border)",
+            width: "100%", background: "var(--bg-elevated)", border: "1px solid rgba(124,58,237,0.2)",
             borderRadius: 9, padding: "9px 12px 9px 39px", color: "var(--text-primary)",
-            fontSize: 16.5, outline: "none",
+            fontSize: 14, outline: "none",
           }}
         />
         {search && (
@@ -459,63 +529,85 @@ function TransitionsTab({
               key={cat.label}
               onClick={() => setFilterCat(cat.label)}
               style={{
-                padding: "4.5px 13.5px", borderRadius: 30, fontSize: 15, fontWeight: isActive ? 600 : 400,
-                border: `1px solid ${isActive ? "var(--accent)" : "var(--border)"}`,
-                background: isActive ? "var(--accent)" : "var(--bg-elevated)",
-                color: isActive ? "#0e0e0f" : "var(--text-secondary)",
-                whiteSpace: "nowrap", cursor: "pointer", flexShrink: 0, transition: "all 0.1s ease",
+                padding: "4.5px 13.5px", borderRadius: 30, fontSize: 12, fontWeight: isActive ? 600 : 400,
+                border: `1px solid ${isActive ? "transparent" : "rgba(124,58,237,0.25)"}`,
+                background: isActive ? "linear-gradient(90deg, #7c3aed, #06b6d4)" : "rgba(124,58,237,0.08)",
+                color: isActive ? "#ffffff" : "#8888a8",
+                whiteSpace: "nowrap", cursor: "pointer", flexShrink: 0, transition: "all 0.15s ease",
               }}
             >{cat.label}</button>
           );
         })}
       </div>
 
+      {/* No timeline empty state */}
       {!hasTimeline && (
-        <p style={{ fontSize: 15.75, color: "var(--text-muted)", lineHeight: 1.5, margin: 0 }}>
-          Generate a lineup first, then select a scene to set its transition.
-        </p>
+        <div style={{
+          borderRadius: 12, padding: "24px 18px", textAlign: "center",
+          border: "1.5px dashed rgba(124,58,237,0.35)",
+          background: "rgba(124,58,237,0.04)",
+        }}>
+          <div className="sparkle-icon" style={{ fontSize: 20, marginBottom: 8 }}>✦</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: "#a78bfa", marginBottom: 6 }}>No timeline yet</div>
+          <div style={{ fontSize: 11.5, color: "var(--text-muted)", lineHeight: 1.6 }}>
+            Generate a lineup using the prompt bar above to get started
+          </div>
+        </div>
       )}
 
       {/* Popular grid */}
-      <div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10.5 }}>
-          <Label>POPULAR</Label>
-          <button onClick={() => setLibraryOpen(true)} style={{
-            fontSize: 14.25, color: "var(--accent)", background: "none", border: "none", cursor: "pointer", fontWeight: 600,
-          }}>View All</button>
-        </div>
+      {hasTimeline && (
         <div style={{
-          display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 9,
-          opacity: !activeSceneId ? 0.5 : 1,
-          pointerEvents: !activeSceneId || !onSceneUpdate ? "none" : "auto",
+          background: "rgba(255,255,255,0.015)", border: "1px solid rgba(124,58,237,0.1)",
+          borderRadius: 12, padding: 12,
         }}>
-          {popular.map(def => (
-            <TransitionThumb
-              key={def.type} type={def.type} label={def.label}
-              isActive={activeType === def.type && !!activeSceneId}
-              onClick={() => handleApply(def.type)}
-            />
-          ))}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10.5 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+              <div style={{ width: 3, height: 12, background: "#7c3aed", borderRadius: 2 }} />
+              <span style={{ fontSize: 10, fontWeight: 700, color: "#a78bfa", letterSpacing: "0.1em" }}>POPULAR</span>
+            </div>
+            <button onClick={() => setLibraryOpen(true)} style={{
+              fontSize: 12.5, color: "#a78bfa", background: "none", border: "none", cursor: "pointer", fontWeight: 600,
+            }}
+              onMouseEnter={e => (e.currentTarget.style.textDecoration = "underline")}
+              onMouseLeave={e => (e.currentTarget.style.textDecoration = "none")}
+            >View All</button>
+          </div>
+          <div style={{
+            display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 9,
+          }}>
+            {popular.map(def => (
+              <TransitionThumb
+                key={def.type} type={def.type} label={def.label}
+                isActive={activeType === def.type && !!activeSceneId}
+                onClick={() => handleApply(def.type)}
+              />
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Applied section */}
       {activeScene && (
-        <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: 15 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10.5 }}>
-            <Label>APPLIED TO THIS CLIP</Label>
+        <div style={{
+          background: "rgba(255,255,255,0.015)", border: "1px solid rgba(124,58,237,0.1)",
+          borderRadius: 12, padding: 12,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 10.5 }}>
+            <div style={{ width: 3, height: 12, background: "#7c3aed", borderRadius: 2 }} />
+            <span style={{ fontSize: 10, fontWeight: 700, color: "#a78bfa", letterSpacing: "0.1em" }}>APPLIED TO THIS CLIP</span>
           </div>
           <div style={{
             display: "flex", alignItems: "center", justifyContent: "space-between",
             padding: "10.5px 15px", borderRadius: 9,
-            background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)",
+            background: "rgba(124,58,237,0.05)", border: "1px solid rgba(124,58,237,0.25)",
           }}>
             <div>
-              <div style={{ fontSize: 16.5, fontWeight: 600, color: "var(--text-primary)" }}>
+              <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>
                 {TRANSITION_CATALOG.find(d => d.type === activeType)?.label ?? activeType}
               </div>
               {activeScene.transition?.duration ? (
-                <div style={{ fontSize: 14.25, color: "var(--text-muted)", marginTop: 1.5 }}>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 1.5 }}>
                   {activeScene.transition.duration}s
                 </div>
               ) : null}
@@ -523,8 +615,9 @@ function TransitionsTab({
             <button
               onClick={() => setLibraryOpen(true)}
               style={{
-                fontSize: 14.25, color: "var(--accent)", background: "var(--accent-bg)",
-                border: "1px solid var(--accent-dim)", borderRadius: 6,
+                fontSize: 12, color: "#a78bfa",
+                background: "transparent",
+                border: "1px solid rgba(124,58,237,0.4)", borderRadius: 6,
                 padding: "4.5px 12px", cursor: "pointer", fontWeight: 600,
               }}
             >Edit</button>
@@ -533,8 +626,8 @@ function TransitionsTab({
           {activeScene.transition?.type && activeScene.transition.type !== "cut" && onSceneUpdate && (
             <div style={{ marginTop: 12 }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                <span style={{ fontSize: 14.25, color: "var(--text-muted)" }}>Duration</span>
-                <span style={{ fontSize: 14.25, color: "var(--accent)", fontWeight: 600 }}>
+                <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Duration</span>
+                <span style={{ fontSize: 12, color: "#a78bfa", fontWeight: 600 }}>
                   {(activeScene.transition.duration ?? 0.5).toFixed(1)}s
                 </span>
               </div>
@@ -543,7 +636,7 @@ function TransitionsTab({
                 onChange={e => onSceneUpdate(activeSceneId!, {
                   transition: { type: activeScene.transition!.type, duration: parseFloat(e.target.value) },
                 })}
-                style={{ width: "100%", accentColor: "var(--accent)", cursor: "pointer" }}
+                style={{ width: "100%", accentColor: "#7c3aed", cursor: "pointer" }}
               />
             </div>
           )}
@@ -552,9 +645,15 @@ function TransitionsTab({
 
       {/* Apply to all */}
       {hasTimeline && onSceneUpdate && (
-        <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: 15 }}>
-          <Label>APPLY TO ALL</Label>
-          <div style={{ display: "flex", gap: 4.5, marginTop: 9 }}>
+        <div style={{
+          background: "rgba(255,255,255,0.015)", border: "1px solid rgba(124,58,237,0.1)",
+          borderRadius: 12, padding: 12,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 10 }}>
+            <div style={{ width: 3, height: 12, background: "#7c3aed", borderRadius: 2 }} />
+            <span style={{ fontSize: 10, fontWeight: 700, color: "#a78bfa", letterSpacing: "0.1em" }}>APPLY TO ALL</span>
+          </div>
+          <div style={{ display: "flex", gap: 4.5 }}>
             {["dissolve", "fade", "slide-left", "zoom-in", "cut"].map(t => {
               const def = TRANSITION_CATALOG.find(d => d.type === t);
               return (
@@ -564,25 +663,40 @@ function TransitionsTab({
                   }))}
                   style={{
                     flex: 1, padding: "7.5px 0", borderRadius: 7.5, cursor: "pointer",
-                    border: "1px solid var(--border-subtle)", background: "var(--bg-panel)",
-                    color: "var(--text-secondary)", fontSize: 12,
+                    border: "1px solid rgba(124,58,237,0.25)", background: "var(--bg-panel)",
+                    color: "var(--text-secondary)", fontSize: 11, transition: "background 0.12s",
                   }}
+                  onMouseEnter={e => (e.currentTarget.style.background = "rgba(124,58,237,0.12)")}
+                  onMouseLeave={e => (e.currentTarget.style.background = "var(--bg-panel)")}
                 >
-                  <div style={{ fontSize: 15, marginBottom: 1.5 }}>{def?.icon}</div>
+                  <div style={{ fontSize: 14, marginBottom: 1.5 }}>{def?.icon}</div>
                   {def?.label.split(" ")[0]}
                 </button>
               );
             })}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10.5, marginTop: 9 }}>
-            <span style={{ fontSize: 13.5, color: "var(--text-muted)", flexShrink: 0 }}>Dur</span>
+            <span style={{ fontSize: 12, color: "var(--text-muted)", flexShrink: 0 }}>Dur</span>
             <input type="range" min="0.2" max="2.0" step="0.1" value={applyAllDur}
               onChange={e => setApplyAllDur(parseFloat(e.target.value))}
-              style={{ flex: 1, accentColor: "var(--accent)", cursor: "pointer" }} />
-            <span style={{ fontSize: 13.5, color: "var(--accent)", fontWeight: 600, minWidth: 36, textAlign: "right" }}>
+              style={{ flex: 1, accentColor: "#7c3aed", cursor: "pointer" }} />
+            <span style={{ fontSize: 12, color: "#a78bfa", fontWeight: 600, minWidth: 36, textAlign: "right" }}>
               {applyAllDur.toFixed(1)}s
             </span>
           </div>
+        </div>
+      )}
+
+      {/* No-scene toast */}
+      {noSceneMsg && (
+        <div style={{
+          position: "absolute", bottom: 10, left: 0, right: 0,
+          background: "rgba(124,58,237,0.92)", borderRadius: 10,
+          padding: "10px 16px", fontSize: 12.5, color: "#fff", fontWeight: 500,
+          textAlign: "center", zIndex: 50,
+          animation: "fadeIn 0.2s ease forwards",
+        }}>
+          Select a scene in the timeline first ↓
         </div>
       )}
 
@@ -620,12 +734,12 @@ function TransitionThumb({ type, label, isActive, onClick }: {
   const outRef = useRef<HTMLDivElement>(null);
   const inRef  = useRef<HTMLDivElement>(null);
   const loopRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
 
   const reset = useCallback(() => {
     const a = outRef.current; const b = inRef.current;
     if (!a || !b) return;
     cancelTransitionAnimations(a, b);
-    // Reset only animated properties — preserve background/layout styles set by React
     a.style.transform = ""; a.style.opacity = "1"; a.style.filter = ""; a.style.clipPath = "";
     b.style.transform = ""; b.style.opacity = "0"; b.style.filter = ""; b.style.clipPath = "";
   }, []);
@@ -638,47 +752,73 @@ function TransitionThumb({ type, label, isActive, onClick }: {
     runTransitionAnimation(a, b, { ...DEFAULT_ANIM_CONFIG, type, durationMs: 600 });
   }, [type, reset]);
 
-  const startLoop = useCallback(() => { play(); loopRef.current = setInterval(play, 1300); }, [play]);
+  const startLoop = useCallback(() => {
+    play();
+    loopRef.current = setInterval(play, 1300);
+    if (cardRef.current) {
+      cardRef.current.style.borderColor = "rgba(124,58,237,0.5)";
+      cardRef.current.style.filter = "brightness(1.15)";
+    }
+  }, [play]);
+
   const stopLoop = useCallback(() => {
     if (loopRef.current) { clearInterval(loopRef.current); loopRef.current = null; }
     reset();
-  }, [reset]);
+    if (cardRef.current) {
+      cardRef.current.style.borderColor = isActive ? "rgba(124,58,237,0.6)" : "rgba(124,58,237,0.2)";
+      cardRef.current.style.filter = "";
+    }
+  }, [reset, isActive]);
 
   useEffect(() => () => { if (loopRef.current) clearInterval(loopRef.current); }, []);
+
+  // Determine a category badge color
+  const badgeColor = type.startsWith("slide") ? "#67e8f9"
+    : type.startsWith("zoom") ? "#a78bfa"
+    : type.startsWith("wipe") ? "#f9a8d4"
+    : type === "dissolve" ? "#6ee7b7"
+    : type === "fade" ? "#fcd34d"
+    : "rgba(124,58,237,0.5)";
 
   return (
     <button onClick={onClick} onMouseEnter={startLoop} onMouseLeave={stopLoop}
       style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", outline: "none", padding: 0 }}
     >
-      <div style={{
+      <div ref={cardRef} style={{
         width: "100%", aspectRatio: "4/3", borderRadius: 9, overflow: "hidden", position: "relative",
-        background: "#080809",
-        border: `${isActive ? 2 : 1}px solid ${isActive ? "var(--accent)" : "var(--border-subtle)"}`,
-        boxShadow: isActive ? "0 0 0 2px rgba(201,169,110,0.15)" : "none",
-        transition: "border-color 0.12s, box-shadow 0.12s",
+        background: "#080812",
+        border: `${isActive ? 2 : 1}px solid ${isActive ? "rgba(124,58,237,0.6)" : "rgba(124,58,237,0.2)"}`,
+        boxShadow: isActive ? "0 0 12px rgba(124,58,237,0.35), inset 0 0 12px rgba(124,58,237,0.08)" : "none",
+        transition: "border-color 0.15s, box-shadow 0.15s, filter 0.15s",
       }}>
         <div ref={outRef} style={{
           position: "absolute", inset: 0, zIndex: 1,
-          background: "linear-gradient(135deg, rgba(201,169,110,0.4) 0%, rgba(201,169,110,0.1) 100%)",
+          background: "linear-gradient(135deg, rgba(124,58,237,0.5) 0%, rgba(124,58,237,0.15) 100%)",
           display: "flex", alignItems: "center", justifyContent: "center",
         }}>
-          <span style={{ fontSize: 12, color: "var(--accent)", fontWeight: 700, opacity: 0.5 }}>A</span>
+          <span style={{ fontSize: 12, color: "#a78bfa", fontWeight: 700, opacity: 0.75 }}>A</span>
         </div>
         <div ref={inRef} style={{
           position: "absolute", inset: 0, zIndex: 2, opacity: 0,
-          background: "linear-gradient(135deg, rgba(99,102,241,0.4) 0%, rgba(99,102,241,0.1) 100%)",
+          background: "linear-gradient(135deg, rgba(6,182,212,0.5) 0%, rgba(6,182,212,0.15) 100%)",
           display: "flex", alignItems: "center", justifyContent: "center",
         }}>
-          <span style={{ fontSize: 12, color: "#a5b4fc", fontWeight: 700, opacity: 0.5 }}>B</span>
+          <span style={{ fontSize: 12, color: "#67e8f9", fontWeight: 700, opacity: 0.75 }}>B</span>
         </div>
         {(type === "cut" || type === "hard-cut") && (
           <div style={{ position: "absolute", inset: 0, zIndex: 3, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
-            <div style={{ width: 1.5, height: "55%", background: "var(--accent)", opacity: 0.4 }} />
+            <div style={{ width: 1.5, height: "55%", background: "#a78bfa", opacity: 0.5 }} />
           </div>
         )}
+        {/* Type badge */}
+        <div style={{
+          position: "absolute", bottom: 4, right: 4, zIndex: 4,
+          width: 6, height: 6, borderRadius: "50%", background: badgeColor,
+          boxShadow: `0 0 5px ${badgeColor}`,
+        }} />
       </div>
       <span style={{
-        fontSize: 12, color: isActive ? "var(--accent)" : "var(--text-secondary)",
+        fontSize: 11, color: isActive ? "#a78bfa" : "#8888a8",
         fontWeight: isActive ? 600 : 400, whiteSpace: "nowrap",
         maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.2, textAlign: "center",
       }}>{label}</span>

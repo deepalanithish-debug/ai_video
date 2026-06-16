@@ -59,6 +59,14 @@ function injectStyles() {
       from { opacity: 0; transform: translateY(4px); }
       to { opacity: 1; transform: translateY(0); }
     }
+    @keyframes accentGlow {
+      0%, 100% { box-shadow: 0 0 6px 1px rgba(124,58,237,0.5); }
+      50% { box-shadow: 0 0 14px 3px rgba(124,58,237,0.8); }
+    }
+    @keyframes subtabUnderline {
+      from { transform: scaleX(0); }
+      to { transform: scaleX(1); }
+    }
   `;
   document.head.appendChild(style);
 }
@@ -86,7 +94,7 @@ function WaveformBars({ waveform, isPlaying }: { waveform: number[]; isPlaying: 
             style={isPlaying ? {
               transformOrigin: `${x + 0.6}px ${y + barH / 2}px`,
               animation: `waveBar ${0.4 + (i % 5) * 0.12}s ease-in-out infinite`,
-              animationDelay: `${(i % 7) * 0.06}s`,
+              animationDelay: `${i * 0.05}s`,
             } : undefined}
           />
         );
@@ -97,18 +105,34 @@ function WaveformBars({ waveform, isPlaying }: { waveform: number[]; isPlaying: 
 
 /* ─── Track Card ─────────────────────────────────────────────────────────────── */
 function TrackCard({
-  track, isPlaying, onTogglePlay, onAddToTimeline, onDelete,
+  track, isPlaying, isFailed, onTogglePlay, onAddToTimeline, onDelete,
   showDelete = false,
 }: {
   track: MusicTrack;
   isPlaying: boolean;
+  isFailed: boolean;
   onTogglePlay: (track: MusicTrack) => void;
   onAddToTimeline: (track: MusicTrack) => void;
   onDelete?: (id: string) => void;
   showDelete?: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
+  const [addHovered, setAddHovered] = useState(false);
   const catColor = CATEGORY_COLORS[track.category] ?? "#7c3aed";
+
+  const borderColor = isPlaying
+    ? "rgba(124,58,237,0.5)"
+    : hovered
+      ? "rgba(124,58,237,0.3)"
+      : "rgba(124,58,237,0.1)";
+
+  const cardBg = isPlaying
+    ? "rgba(124,58,237,0.05)"
+    : hovered
+      ? "rgba(124,58,237,0.07)"
+      : "rgba(255,255,255,0.025)";
+
+  const playBtnColor = isFailed ? "#f87171" : isPlaying ? "#7c3aed" : "rgba(124,58,237,0.15)";
 
   return (
     <div
@@ -116,18 +140,32 @@ function TrackCard({
       onMouseLeave={() => setHovered(false)}
       style={{
         borderRadius: 10,
-        border: `1px solid ${hovered ? "rgba(124,58,237,0.4)" : "rgba(124,58,237,0.15)"}`,
-        background: "rgba(255,255,255,0.03)",
-        padding: "10px 12px",
+        border: `1px solid ${borderColor}`,
+        background: cardBg,
+        padding: "10px 12px 10px 16px",
         display: "flex",
         flexDirection: "column",
         gap: 8,
-        transition: "border-color 0.15s, box-shadow 0.15s",
-        boxShadow: hovered ? "0 0 12px rgba(124,58,237,0.1)" : "none",
+        transition: "border-color 0.15s, box-shadow 0.15s, background 0.15s",
+        boxShadow: isPlaying ? "0 0 16px rgba(124,58,237,0.12)" : hovered ? "0 0 12px rgba(124,58,237,0.08)" : "none",
         cursor: "default",
         animation: "musicTabFadeIn 0.2s ease both",
+        position: "relative",
+        overflow: "hidden",
       }}
     >
+      {/* Left accent bar */}
+      <div style={{
+        position: "absolute",
+        left: 0,
+        top: 0,
+        bottom: 0,
+        width: 4,
+        background: catColor,
+        borderRadius: "10px 0 0 10px",
+        animation: isPlaying ? "accentGlow 1.5s ease-in-out infinite" : undefined,
+      }} />
+
       {/* Row 1: waveform + title/artist + badges */}
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <WaveformBars waveform={track.waveform} isPlaying={isPlaying} />
@@ -150,7 +188,7 @@ function TrackCard({
           <span style={{ fontSize: 11.5, color: "#8888a8", fontVariantNumeric: "tabular-nums" }}>
             {fmtDuration(track.duration)}
           </span>
-          {track.bpm && (
+          {track.bpm > 0 && (
             <span style={{
               fontSize: 9.5, fontWeight: 700, letterSpacing: "0.06em",
               color: "#7c3aed", border: "1px solid rgba(124,58,237,0.3)",
@@ -188,32 +226,38 @@ function TrackCard({
         {/* Play/Pause */}
         <button
           onClick={() => onTogglePlay(track)}
-          title={isPlaying ? "Pause" : "Play preview"}
+          title={isFailed ? "Failed to load" : isPlaying ? "Pause" : "Play preview"}
           style={{
             width: 28, height: 28, borderRadius: "50%", border: "none",
-            background: isPlaying ? "var(--purple)" : "rgba(124,58,237,0.15)",
+            background: playBtnColor,
             color: "#f1f1f6", cursor: "pointer",
             display: "flex", alignItems: "center", justifyContent: "center",
             transition: "background 0.15s", flexShrink: 0,
           }}
         >
-          {isPlaying
-            ? <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><rect x="1" y="1" width="3" height="8" rx="1" /><rect x="6" y="1" width="3" height="8" rx="1" /></svg>
-            : <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><polygon points="2,1 9,5 2,9" /></svg>
+          {isFailed
+            ? <svg width="10" height="10" viewBox="0 0 10 10" fill="#f87171"><line x1="2" y1="2" x2="8" y2="8" stroke="#f87171" strokeWidth="2" /><line x1="8" y1="2" x2="2" y2="8" stroke="#f87171" strokeWidth="2" /></svg>
+            : isPlaying
+              ? <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><rect x="1" y="1" width="3" height="8" rx="1" /><rect x="6" y="1" width="3" height="8" rx="1" /></svg>
+              : <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><polygon points="2,1 9,5 2,9" /></svg>
           }
         </button>
         {/* Add to timeline */}
         <button
           onClick={() => onAddToTimeline(track)}
+          onMouseEnter={() => setAddHovered(true)}
+          onMouseLeave={() => setAddHovered(false)}
           title="Add to timeline"
           style={{
             borderRadius: 6, border: "1px solid rgba(124,58,237,0.4)",
-            background: "rgba(124,58,237,0.15)", color: "#a78bfa",
+            background: addHovered ? "rgba(124,58,237,0.35)" : "rgba(124,58,237,0.15)",
+            color: "#a78bfa",
             cursor: "pointer", padding: "5px 10px", fontSize: 11, fontWeight: 600,
-            letterSpacing: "0.04em", transition: "background 0.15s", flexShrink: 0,
+            letterSpacing: "0.04em",
+            transition: "background 0.15s, transform 0.1s",
+            transform: addHovered ? "scale(1.04)" : "scale(1)",
+            flexShrink: 0,
           }}
-          onMouseEnter={e => { e.currentTarget.style.background = "rgba(124,58,237,0.3)"; }}
-          onMouseLeave={e => { e.currentTarget.style.background = "rgba(124,58,237,0.15)"; }}
         >
           + Add
         </button>
@@ -253,6 +297,7 @@ function PurpleSlider({
           style={{
             position: "absolute", left: 0, right: 0, width: "100%",
             opacity: 0, height: 20, cursor: "pointer", margin: 0,
+            accentColor: "#7c3aed",
           }}
         />
       </div>
@@ -304,20 +349,24 @@ function MuteBtn({ muted, onToggle }: { muted: boolean; onToggle: () => void }) 
 }
 
 /* ─── Controls section card ──────────────────────────────────────────────────── */
-function ControlCard({ title, badge, children }: { title: string; badge?: string; children: React.ReactNode }) {
+function ControlCard({ title, badge, icon, children }: { title: string; badge?: string; icon?: React.ReactNode; children: React.ReactNode }) {
   return (
     <div style={{
-      borderRadius: 10, border: "1px solid rgba(124,58,237,0.15)",
-      background: "rgba(255,255,255,0.03)", padding: "12px 14px",
+      borderRadius: 12,
+      border: "1px solid rgba(124,58,237,0.12)",
+      background: "rgba(255,255,255,0.02)",
+      padding: 14,
       display: "flex", flexDirection: "column", gap: 10,
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.08em", color: "#f1f1f6" }}>{title}</span>
+        {icon && <span style={{ color: "#a78bfa", flexShrink: 0 }}>{icon}</span>}
+        <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.08em", color: "#f1f1f6", flex: 1 }}>{title}</span>
         {badge && (
           <span style={{
-            fontSize: 9, fontWeight: 700, letterSpacing: "0.08em", color: "#7c3aed",
-            border: "1px solid rgba(124,58,237,0.4)", borderRadius: 3, padding: "1px 5px",
-            background: "rgba(124,58,237,0.1)",
+            fontSize: 9, fontWeight: 700, letterSpacing: "0.08em",
+            color: "#67e8f9",
+            borderRadius: 3, padding: "2px 6px",
+            background: "linear-gradient(90deg, rgba(124,58,237,0.3), rgba(6,182,212,0.3))",
           }}>{badge}</span>
         )}
       </div>
@@ -328,9 +377,10 @@ function ControlCard({ title, badge, children }: { title: string; badge?: string
 
 /* ─── Library Tab ────────────────────────────────────────────────────────────── */
 function LibraryTab({
-  playingId, onTogglePlay, onAddToTimeline,
+  playingId, failedId, onTogglePlay, onAddToTimeline,
 }: {
   playingId: string | null;
+  failedId: string | null;
   onTogglePlay: (track: MusicTrack) => void;
   onAddToTimeline: (track: MusicTrack) => void;
 }) {
@@ -375,7 +425,6 @@ function LibraryTab({
       <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 4 }}>
         {CATEGORIES.map(cat => {
           const isActive = category === cat.id;
-          const color = CATEGORY_COLORS[cat.id];
           return (
             <button
               key={cat.id}
@@ -383,10 +432,25 @@ function LibraryTab({
               style={{
                 flexShrink: 0, fontSize: 10.5, fontWeight: 600, letterSpacing: "0.04em",
                 padding: "4px 10px", borderRadius: 20,
-                border: `1px solid ${isActive ? color : "rgba(255,255,255,0.1)"}`,
-                background: isActive ? `${color}22` : "transparent",
-                color: isActive ? color : "#8888a8",
+                border: isActive ? "none" : "1px solid rgba(124,58,237,0.2)",
+                background: isActive
+                  ? "linear-gradient(90deg, rgba(124,58,237,0.6), rgba(6,182,212,0.6))"
+                  : "rgba(124,58,237,0.06)",
+                color: isActive ? "#ffffff" : "#8888a8",
                 cursor: "pointer", transition: "all 0.12s",
+                boxShadow: isActive ? "0 0 10px rgba(124,58,237,0.3)" : undefined,
+              }}
+              onMouseEnter={e => {
+                if (!isActive) {
+                  e.currentTarget.style.borderColor = "rgba(124,58,237,0.5)";
+                  e.currentTarget.style.boxShadow = "0 0 8px rgba(124,58,237,0.15)";
+                }
+              }}
+              onMouseLeave={e => {
+                if (!isActive) {
+                  e.currentTarget.style.borderColor = "rgba(124,58,237,0.2)";
+                  e.currentTarget.style.boxShadow = "none";
+                }
               }}
             >
               {cat.label}
@@ -407,6 +471,7 @@ function LibraryTab({
               key={track.id}
               track={track}
               isPlaying={playingId === track.id}
+              isFailed={failedId === track.id}
               onTogglePlay={onTogglePlay}
               onAddToTimeline={onAddToTimeline}
             />
@@ -419,10 +484,11 @@ function LibraryTab({
 
 /* ─── Uploaded Tab ───────────────────────────────────────────────────────────── */
 function UploadedTab({
-  audioTracks, playingId, onTogglePlay, onAddToTimeline, onUpload, onDelete,
+  audioTracks, playingId, failedId, onTogglePlay, onAddToTimeline, onUpload, onDelete,
 }: {
   audioTracks: UploadedAudio[];
   playingId: string | null;
+  failedId: string | null;
   onTogglePlay: (track: MusicTrack) => void;
   onAddToTimeline: (track: MusicTrack) => void;
   onUpload: () => void;
@@ -444,6 +510,45 @@ function UploadedTab({
     mood: "custom",
     isRoyaltyFree: false,
   }), []);
+
+  if (audioTracks.length === 0) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {/* Premium empty state dropzone */}
+        <div
+          onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={e => {
+            e.preventDefault();
+            setDragOver(false);
+            onUpload();
+          }}
+          onClick={onUpload}
+          style={{
+            borderRadius: 14,
+            border: `2px dashed ${dragOver ? "rgba(124,58,237,0.8)" : "rgba(124,58,237,0.35)"}`,
+            background: dragOver ? "rgba(124,58,237,0.1)" : "rgba(124,58,237,0.03)",
+            padding: "40px 24px",
+            textAlign: "center",
+            cursor: "pointer",
+            transition: "all 0.18s",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth="1.5" style={{ display: "block" }}>
+            <path d="M12 16V4m0 0L8 8m4-4l4 4" />
+            <path d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2" />
+          </svg>
+          <div style={{ fontSize: 14, color: "#a78bfa", fontWeight: 700 }}>Drop audio files here</div>
+          <div style={{ fontSize: 11.5, color: "#44445a" }}>or click to browse</div>
+          <div style={{ fontSize: 10.5, color: "#33334a", marginTop: 4 }}>MP3 · WAV · M4A · AAC</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -471,28 +576,23 @@ function UploadedTab({
         <div style={{ fontSize: 11, color: "#44445a", marginTop: 3 }}>MP3, WAV, M4A, AAC</div>
       </div>
 
-      {audioTracks.length === 0 ? (
-        <div style={{ textAlign: "center", padding: "16px 0", color: "#44445a", fontSize: 12.5 }}>
-          No uploads yet. Add your own music above.
-        </div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-          {audioTracks.map(ua => {
-            const track = toMusicTrack(ua);
-            return (
-              <TrackCard
-                key={ua.id}
-                track={track}
-                isPlaying={playingId === ua.id}
-                onTogglePlay={onTogglePlay}
-                onAddToTimeline={onAddToTimeline}
-                showDelete
-                onDelete={onDelete}
-              />
-            );
-          })}
-        </div>
-      )}
+      <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+        {audioTracks.map(ua => {
+          const track = toMusicTrack(ua);
+          return (
+            <TrackCard
+              key={ua.id}
+              track={track}
+              isPlaying={playingId === ua.id}
+              isFailed={failedId === ua.id}
+              onTogglePlay={onTogglePlay}
+              onAddToTimeline={onAddToTimeline}
+              showDelete
+              onDelete={onDelete}
+            />
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -522,10 +622,36 @@ function ControlsTab({ audioTracks }: { audioTracks: UploadedAudio[] }) {
   const getTrackFadeOut = (id: string) => trackFadeOut[id] ?? 0;
   const getTrackMuted = (id: string) => trackMuted[id] ?? false;
 
+  const volumeIcon = (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+      <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" />
+    </svg>
+  );
+
+  const levelIcon = (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <line x1="4" y1="6" x2="20" y2="6" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="18" x2="20" y2="18" />
+    </svg>
+  );
+
+  const voiceIcon = (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+      <path d="M19 10v2a7 7 0 0 1-14 0v-2" /><line x1="12" y1="19" x2="12" y2="23" /><line x1="8" y1="23" x2="16" y2="23" />
+    </svg>
+  );
+
+  const noiseIcon = (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M1 6l4 4 4-4 4 4 4-4 4 4 4-4" /><path d="M1 12l4 4 4-4 4 4 4-4 4 4 4-4" /><path d="M1 18l4 4 4-4 4 4 4-4 4 4 4-4" />
+    </svg>
+  );
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       {/* 1. Volume Mixer */}
-      <ControlCard title="VOLUME MIXER">
+      <ControlCard title="VOLUME MIXER" icon={volumeIcon}>
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
@@ -548,7 +674,7 @@ function ControlsTab({ audioTracks }: { audioTracks: UploadedAudio[] }) {
       </ControlCard>
 
       {/* 2. Auto Volume Leveling */}
-      <ControlCard title="AUTO VOLUME LEVELING">
+      <ControlCard title="AUTO VOLUME LEVELING" icon={levelIcon}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 11, color: "#44445a", lineHeight: 1.5 }}>
@@ -571,7 +697,7 @@ function ControlsTab({ audioTracks }: { audioTracks: UploadedAudio[] }) {
       </ControlCard>
 
       {/* 3. Voice Isolation */}
-      <ControlCard title="VOICE ISOLATION" badge="AI POWERED">
+      <ControlCard title="VOICE ISOLATION" badge="AI POWERED" icon={voiceIcon}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 11, color: "#44445a", lineHeight: 1.5 }}>
@@ -588,7 +714,7 @@ function ControlsTab({ audioTracks }: { audioTracks: UploadedAudio[] }) {
       </ControlCard>
 
       {/* 4. Noise Reduction */}
-      <ControlCard title="NOISE REDUCTION" badge="AI POWERED">
+      <ControlCard title="NOISE REDUCTION" badge="AI POWERED" icon={noiseIcon}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 11, color: "#44445a", lineHeight: 1.5 }}>
@@ -670,6 +796,7 @@ export default function MusicTab({
 }: MusicTabProps) {
   const [subTab, setSubTab] = useState<MusicSubTab>("library");
   const [playingId, setPlayingId] = useState<string | null>(null);
+  const [failedId, setFailedId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // Inject CSS keyframes once
@@ -686,10 +813,19 @@ export default function MusicTab({
       }
       const audio = new Audio(track.previewUrl);
       audio.volume = 0.7;
-      audio.play().catch(() => {});
       audio.onended = () => setPlayingId(null);
+      audio.onerror = () => {
+        setPlayingId(null);
+        setFailedId(track.id);
+        setTimeout(() => setFailedId(null), 3000);
+      };
       audioRef.current = audio;
-      setPlayingId(track.id);
+      audio.play()
+        .then(() => setPlayingId(track.id))
+        .catch(() => {
+          setFailedId(track.id);
+          setTimeout(() => setFailedId(null), 3000);
+        });
     }
   }, [playingId]);
 
@@ -720,10 +856,15 @@ export default function MusicTab({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", gap: 0 }}>
-      {/* Sub-tabs */}
+      {/* Sub-tabs — premium pill container */}
       <div style={{
-        display: "flex", borderBottom: "1px solid rgba(255,255,255,0.06)",
-        marginBottom: 12, flexShrink: 0,
+        display: "flex",
+        background: "rgba(255,255,255,0.03)",
+        borderRadius: 20,
+        padding: "3px",
+        marginBottom: 12,
+        flexShrink: 0,
+        gap: 2,
       }}>
         {SUB_TABS.map(tab => {
           const isActive = subTab === tab.id;
@@ -732,15 +873,35 @@ export default function MusicTab({
               key={tab.id}
               onClick={() => setSubTab(tab.id)}
               style={{
-                flex: 1, padding: "8px 4px", border: "none",
-                background: "transparent", cursor: "pointer",
-                fontSize: 11.5, fontWeight: isActive ? 700 : 500,
-                color: isActive ? "#a78bfa" : "#8888a8",
-                borderBottom: `2px solid ${isActive ? "#7c3aed" : "transparent"}`,
-                transition: "all 0.14s", letterSpacing: "0.03em",
+                flex: 1,
+                padding: "6px 4px",
+                border: "none",
+                background: "transparent",
+                cursor: "pointer",
+                fontSize: 11.5,
+                fontWeight: isActive ? 700 : 500,
+                color: isActive ? "#ffffff" : "#8888a8",
+                borderRadius: 17,
+                position: "relative",
+                transition: "color 0.14s",
+                letterSpacing: "0.03em",
               }}
             >
               {tab.label}
+              {isActive && (
+                <span style={{
+                  position: "absolute",
+                  bottom: 2,
+                  left: "50%",
+                  transform: "translateX(-50%)",
+                  width: "60%",
+                  height: 2,
+                  borderRadius: 1,
+                  background: "#7c3aed",
+                  display: "block",
+                  animation: "subtabUnderline 0.18s ease both",
+                }} />
+              )}
             </button>
           );
         })}
@@ -751,6 +912,7 @@ export default function MusicTab({
         {subTab === "library" && (
           <LibraryTab
             playingId={playingId}
+            failedId={failedId}
             onTogglePlay={handleTogglePlay}
             onAddToTimeline={handleAddToTimeline}
           />
@@ -759,6 +921,7 @@ export default function MusicTab({
           <UploadedTab
             audioTracks={audioTracks}
             playingId={playingId}
+            failedId={failedId}
             onTogglePlay={handleTogglePlay}
             onAddToTimeline={handleAddToTimeline}
             onUpload={onUpload}
