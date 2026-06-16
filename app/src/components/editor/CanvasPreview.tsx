@@ -1,8 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState, memo, useCallback, useMemo } from "react";
+import { useEffect, useRef, useState, memo, useCallback } from "react";
 import type { Scene, Timeline, CaptionLine } from "@/types/timeline";
 import type { UploadedAudio } from "@/types/clips";
+import type { StudioCaption } from "@/types/captions";
+import { runTransitionAnimation as runSharedTransition, cancelTransitionAnimations, DEFAULT_ANIM_CONFIG } from "@/lib/transitionAnimations";
+import CaptionLayer from "./CaptionLayer";
+import OutroOverlay from "./OutroOverlay";
+import type { OutroTemplate } from "@/types/outro";
 
 interface BrandOverrides {
   primaryColor?: string;
@@ -26,6 +31,16 @@ interface CanvasPreviewProps {
   audioTracks: UploadedAudio[];
   activeAudioId: string | null;
   brandOverrides?: BrandOverrides;
+  // Text Studio
+  captions?: StudioCaption[];
+  selectedCaptionId?: string | null;
+  onCaptionSelect?: (id: string | null) => void;
+  onCaptionUpdate?: (id: string, patch: Partial<StudioCaption>) => void;
+  showGrid?: boolean;
+  showSafeZones?: boolean;
+  showThirds?: boolean;
+  outroConfig?: OutroTemplate | null;
+  outroSceneId?: string | null;
 }
 
 const COLOR_GRADE_FILTERS: Record<string, string> = {
@@ -303,6 +318,11 @@ export default function CanvasPreview({
   aspectRatio: aspectRatioProp,
   audioTracks, activeAudioId,
   brandOverrides,
+  captions = [], selectedCaptionId = null,
+  onCaptionSelect, onCaptionUpdate,
+  showGrid = false, showSafeZones = false, showThirds = false,
+  outroConfig = null,
+  outroSceneId = null,
 }: CanvasPreviewProps) {
   const bgmRef = useRef<HTMLAudioElement>(null);
   const [isMuted, setIsMuted] = useState(false);
@@ -348,7 +368,7 @@ export default function CanvasPreview({
   }, [isPlaying, bgmSrc, isMuted, volume]);
 
   // Resolve which scene to display
-  const resolved = timeline && isPlaying ? resolveScene(timeline, currentTime) : null;
+  const resolved = timeline ? resolveScene(timeline, currentTime) : null;
   const displayScene =
     resolved?.scene
     ?? (activeSceneId ? (timeline?.scenes ?? []).find((s) => s.id === activeSceneId) : null)
@@ -357,10 +377,10 @@ export default function CanvasPreview({
   const sceneTime = resolved?.sceneTime ?? 0;
   const activeCaption = displayScene ? getActiveCaption(displayScene, sceneTime) : null;
 
-  // ── Crossfade transition state ────────────────────────────────────────────
+  // ── Transition state (Web Animations API — imperative, no CSS timing issues) ──
   const [outgoingScene, setOutgoingScene] = useState<Scene | null>(null);
-  const [outgoingOpacity, setOutgoingOpacity] = useState(0);
-  const [incomingOpacity, setIncomingOpacity] = useState(1);
+  const outgoingLayerRef = useRef<HTMLDivElement>(null);
+  const incomingLayerRef = useRef<HTMLDivElement>(null);
   const prevDisplaySceneIdRef = useRef<string | null>(null);
   const transitionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -369,42 +389,48 @@ export default function CanvasPreview({
     if (!displayScene || displayScene.id === prevId) return;
     prevDisplaySceneIdRef.current = displayScene.id;
 
-    const transType = displayScene.transition?.type ?? "cut";
-    const isCut = transType === "cut" || !transType;
-    const durMs = isCut ? 0 : Math.max(50, (displayScene.transition?.duration ?? 0.5) * 1000);
+    const trans = displayScene.transition;
+    const transType = trans?.type ?? "cut";
+    const isCut = transType === "cut" || transType === "hard-cut" || !transType;
+    const speedMult = trans?.speed === "slow" ? 1.5 : trans?.speed === "fast" ? 0.5 : 1;
+    const baseDur = trans?.duration ?? 0.5;
+    const durMs = isCut ? 0 : Math.max(150, baseDur * speedMult * 1000);
 
     if (transitionTimerRef.current) clearTimeout(transitionTimerRef.current);
+    incomingLayerRef.current?.getAnimations().forEach((a) => a.cancel());
 
     if (isCut || !prevId) {
       setOutgoingScene(null);
-      setIncomingOpacity(1);
-    } else {
-      // Find the previous scene to show fading out
-      const prevScene = (timeline?.scenes ?? []).find((s) => s.id === prevId) ?? null;
-      setOutgoingScene(prevScene);
-      setOutgoingOpacity(1);
-      setIncomingOpacity(0);
-
-      // Let browser paint, then animate
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          setOutgoingOpacity(0);
-          setIncomingOpacity(1);
-        });
-      });
-
-      transitionTimerRef.current = setTimeout(() => {
-        setOutgoingScene(null);
-        setOutgoingOpacity(0);
-      }, durMs + 50);
+      return;
     }
+
+    const prevScene = (timeline?.scenes ?? []).find((s) => s.id === prevId) ?? null;
+    setOutgoingScene(prevScene);
+
+    // 16ms = 1 frame — waits for React to mount the outgoing div before animating
+    setTimeout(() => {
+      const outEl = outgoingLayerRef.current;
+      const inEl  = incomingLayerRef.current;
+      cancelTransitionAnimations(outEl, inEl);
+      runSharedTransition(outEl, inEl, {
+        ...DEFAULT_ANIM_CONFIG,
+        type: transType,
+        durationMs: durMs,
+        intensity:      trans?.intensity      ?? DEFAULT_ANIM_CONFIG.intensity,
+        direction:      (trans?.direction     ?? DEFAULT_ANIM_CONFIG.direction) as typeof DEFAULT_ANIM_CONFIG.direction,
+        easing:         trans?.easing         ?? DEFAULT_ANIM_CONFIG.easing,
+        blurAmount:     trans?.blurAmount     ?? DEFAULT_ANIM_CONFIG.blurAmount,
+        motionStrength: trans?.motionStrength ?? DEFAULT_ANIM_CONFIG.motionStrength,
+        mode:           (trans?.mode          ?? DEFAULT_ANIM_CONFIG.mode) as typeof DEFAULT_ANIM_CONFIG.mode,
+      });
+    }, 16);
+
+    transitionTimerRef.current = setTimeout(() => {
+      setOutgoingScene(null);
+      incomingLayerRef.current?.getAnimations().forEach((a) => a.cancel());
+    }, durMs + 100);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [displayScene?.id]);
-
-  const transitionDurMs = useMemo(() => {
-    if (!displayScene?.transition || displayScene.transition.type === "cut") return 0;
-    return (displayScene.transition.duration ?? 0.5) * 1000;
-  }, [displayScene?.transition]);
 
   const aspectRatio = aspectRatioProp ?? timeline?.aspectRatio ?? "9:16";
 
@@ -532,12 +558,10 @@ export default function CanvasPreview({
               filter: colorGradeFilter || undefined,
               transition: "filter 0.3s ease",
             }}>
-              {/* Outgoing scene — fades out during transition */}
+              {/* Outgoing scene — animated out via Web Animations API */}
               {outgoingScene && (
-                <div style={{
+                <div ref={outgoingLayerRef} style={{
                   position: "absolute", inset: 0, zIndex: 1,
-                  opacity: outgoingOpacity,
-                  transition: outgoingOpacity === 0 ? `opacity ${transitionDurMs}ms ease` : "none",
                   pointerEvents: "none",
                 }}>
                   <SceneVisual
@@ -550,11 +574,9 @@ export default function CanvasPreview({
                 </div>
               )}
 
-              {/* Incoming scene — fades in */}
-              <div style={{
+              {/* Incoming scene — animated in via Web Animations API */}
+              <div ref={incomingLayerRef} style={{
                 position: "absolute", inset: 0, zIndex: 2,
-                opacity: incomingOpacity,
-                transition: transitionDurMs > 0 ? `opacity ${transitionDurMs}ms ease` : "none",
               }}>
                 <SceneVisual
                   key={displayScene?.id ?? "empty"}
@@ -612,6 +634,26 @@ export default function CanvasPreview({
                     {activeCaption.text}
                   </span>
                 </div>
+              )}
+
+              {/* Studio caption layer (interactive, above everything) */}
+              {captions.length > 0 || showGrid || showSafeZones || showThirds ? (
+                <CaptionLayer
+                  captions={captions}
+                  currentTime={currentTime}
+                  selectedCaptionId={selectedCaptionId}
+                  onCaptionSelect={onCaptionSelect ?? (() => {})}
+                  onCaptionUpdate={onCaptionUpdate ?? (() => {})}
+                  showGrid={showGrid}
+                  showSafeZones={showSafeZones}
+                  showThirds={showThirds}
+                  isPlaying={isPlaying}
+                />
+              ) : null}
+
+              {/* Brand Outro overlay */}
+              {outroConfig && outroSceneId && displayScene?.id === outroSceneId && (
+                <OutroOverlay config={outroConfig} sceneTime={sceneTime} />
               )}
 
               {/* Recording dot while playing */}

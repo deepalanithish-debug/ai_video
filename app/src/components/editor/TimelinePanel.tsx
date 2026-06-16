@@ -1,8 +1,11 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import type { Scene, Timeline } from "@/types/timeline";
+import type { OutroTemplate } from "@/types/outro";
 import type { UploadedClip } from "@/types/clips";
+import type { StudioCaption } from "@/types/captions";
+import TransitionLibrary from "./TransitionLibrary";
 
 const SCENE_COLORS = [
   "#c9a96e", "#a78bfa", "#6ee7b7", "#f472b6", "#fcd34d",
@@ -31,7 +34,18 @@ interface TimelinePanelProps {
   currentTime: number;
   onSeek: (t: number) => void;
   onSceneDurationChange?: (sceneId: string, newDuration: number) => void;
+  onSceneUpdate?: (sceneId: string, patch: Partial<Scene>) => void;
   clips?: UploadedClip[];
+  onScenesReorder?: (fromIdx: number, toIdx: number) => void;
+  onClipInsert?: (position: number, file: File) => void;
+  // Text Studio
+  captions?: StudioCaption[];
+  selectedCaptionId?: string | null;
+  onCaptionSelect?: (id: string | null) => void;
+  onCaptionUpdate?: (id: string, patch: Partial<StudioCaption>) => void;
+  // Brand Outro
+  outroConfig?: OutroTemplate | null;
+  outroSceneId?: string | null;
 }
 
 export default function TimelinePanel({
@@ -43,11 +57,40 @@ export default function TimelinePanel({
   currentTime,
   onSeek,
   onSceneDurationChange,
+  onSceneUpdate,
   clips = [],
+  onScenesReorder,
+  onClipInsert,
+  captions = [],
+  selectedCaptionId = null,
+  onCaptionSelect,
+  onCaptionUpdate,
+  outroConfig = null,
+  outroSceneId = null,
 }: TimelinePanelProps) {
   const [zoom, setZoom] = useState(1);
   const scrollRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
+  const [dragFromIdx, setDragFromIdx] = useState<number | null>(null);
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+  const [librarySceneId, setLibrarySceneId] = useState<string | null>(null);
+
+  const pixelsPerSecond = 44 * zoom;
+
+  // Auto-scroll to keep playhead visible during playback
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !timeline) return;
+    const TRACK_LABEL_W = 30;
+    const playheadLeft = TRACK_LABEL_W + currentTime * pixelsPerSecond;
+    const { scrollLeft, clientWidth } = el;
+    const margin = 80;
+    if (playheadLeft < scrollLeft + margin) {
+      el.scrollLeft = Math.max(0, playheadLeft - margin);
+    } else if (playheadLeft > scrollLeft + clientWidth - margin) {
+      el.scrollLeft = playheadLeft - clientWidth + margin;
+    }
+  }, [currentTime, pixelsPerSecond, timeline]);
 
   if (!timeline) {
     return (
@@ -69,9 +112,9 @@ export default function TimelinePanel({
   }
 
   const totalDuration = timeline.totalDuration;
-  const pixelsPerSecond = 44 * zoom;
 
   return (
+    <>
     <div
       style={{
         height: 220,
@@ -158,6 +201,17 @@ export default function TimelinePanel({
       {/* Track area */}
       <div
         ref={scrollRef}
+        onPointerDown={(e) => {
+          // Only seek if clicking on the background, not on scene chips
+          if ((e.target as HTMLElement).closest('[data-scene-chip]')) return;
+          if ((e.target as HTMLElement).closest('[data-caption-chip]')) return;
+          const el = e.currentTarget;
+          const rect = el.getBoundingClientRect();
+          const scrollLeft = el.scrollLeft;
+          const OFFSET = 30;
+          const x = e.clientX - rect.left + scrollLeft - OFFSET;
+          onSeek(Math.max(0, Math.min(totalDuration, x / pixelsPerSecond)));
+        }}
         style={{
           flex: 1,
           overflowX: "auto",
@@ -198,13 +252,18 @@ export default function TimelinePanel({
         </div>
 
         {/* Video track */}
-        <div style={{ display: "flex", alignItems: "center", gap: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 0 }} ref={trackRef}>
           <TrackLabel>V</TrackLabel>
-          <div style={{ display: "flex", gap: 2, position: "relative" }}>
-            {(timeline.scenes ?? []).map((scene, i) => {
+          <div style={{ display: "flex", alignItems: "center", gap: 0, position: "relative" }}>
+            {/* Insert button before first clip */}
+            {onClipInsert && (
+              <InsertClipButton key="ins-0" position={0} onInsert={onClipInsert} />
+            )}
+            {(timeline.scenes ?? []).flatMap((scene, i) => {
+              const scenes = timeline.scenes ?? [];
               const assignedClip = clips.find((c) => c.id && c.assignedToSceneId === scene.id)
                 ?? clips.find((c) => c.objectUrl === scene.clipSrc);
-              return (
+              const chip = (
                 <SceneChip
                   key={scene.id}
                   scene={scene}
@@ -214,33 +273,104 @@ export default function TimelinePanel({
                   isActive={scene.id === activeSceneId}
                   onClick={() => onSceneSelect(scene.id)}
                   onDurationChange={onSceneDurationChange}
+                  onSceneUpdate={onSceneUpdate}
                   clip={assignedClip}
+                  isDragOver={dragOverIdx === i}
+                  onDragStart={(idx) => setDragFromIdx(idx)}
+                  onDragOver={(idx) => setDragOverIdx(idx)}
+                  onDrop={(idx) => {
+                    if (dragFromIdx !== null && dragFromIdx !== idx) {
+                      onScenesReorder?.(dragFromIdx, idx);
+                    }
+                    setDragFromIdx(null);
+                    setDragOverIdx(null);
+                  }}
                 />
               );
+              // Connector between scene[i] and scene[i+1].
+              // The transition belongs to the INCOMING scene (scene[i+1]) —
+              // CanvasPreview reads displayScene.transition which is the next scene.
+              const nextScene = scenes[i + 1];
+              const connector = (onSceneUpdate && nextScene) ? (
+                <TransitionConnector
+                  key={`tc-${scene.id}`}
+                  scene={nextScene}
+                  onOpenLibrary={() => setLibrarySceneId(nextScene.id)}
+                />
+              ) : null;
+              const inserter = onClipInsert ? (
+                <InsertClipButton key={`ins-${i + 1}`} position={i + 1} onInsert={onClipInsert} />
+              ) : null;
+
+              if (i < scenes.length - 1) {
+                return connector
+                  ? [chip, connector, ...(inserter ? [inserter] : [])]
+                  : [chip, ...(inserter ? [inserter] : [])];
+              }
+              // Last chip — only append inserter (no connector)
+              return [chip, ...(inserter ? [inserter] : [])];
             })}
           </div>
         </div>
 
-        {/* Caption track */}
+        {/* Studio caption track */}
         <div style={{ display: "flex", alignItems: "center", gap: 0 }}>
-          <TrackLabel style={{ color: "#a5b4fc" }}>C</TrackLabel>
-          <div style={{ display: "flex", gap: 2, position: "relative" }}>
-            {(timeline.scenes ?? []).map((scene, i) =>
-              (scene.captions?.length ?? 0) > 0 ? (
-                <CaptionTrackChip
-                  key={scene.id}
-                  scene={scene}
-                  index={i}
-                  pixelsPerSecond={pixelsPerSecond}
-                  captionCount={scene.captions?.length ?? 0}
-                />
-              ) : (
+          <TrackLabel style={{ color: "#a5b4fc" }}>T</TrackLabel>
+          <div style={{ position: "relative", height: 22, width: totalDuration * pixelsPerSecond }}>
+            {/* empty track bg */}
+            <div style={{
+              position: "absolute", inset: 0,
+              background: "rgba(165,180,252,0.04)",
+              borderRadius: 3, border: "1px solid rgba(165,180,252,0.08)",
+            }} />
+            {captions.map(cap => {
+              const isSel = cap.id === selectedCaptionId;
+              const left = cap.startTime * pixelsPerSecond;
+              const width = Math.max(8, (cap.endTime - cap.startTime) * pixelsPerSecond);
+              const capColor = isSel ? "#a5b4fc" : "rgba(165,180,252,0.55)";
+              return (
                 <div
-                  key={scene.id}
-                  style={{ width: scene.duration * pixelsPerSecond }}
-                />
-              )
-            )}
+                  key={cap.id}
+                  title={cap.text}
+                  onClick={() => onCaptionSelect?.(cap.id)}
+                  style={{
+                    position: "absolute", top: 2, height: 18,
+                    left, width,
+                    background: isSel ? "rgba(165,180,252,0.22)" : "rgba(165,180,252,0.1)",
+                    border: `1px solid ${capColor}`,
+                    borderRadius: 4, cursor: "pointer",
+                    display: "flex", alignItems: "center", overflow: "hidden",
+                    transition: "background 0.1s",
+                  }}
+                >
+                  <span style={{
+                    fontSize: 8.5, color: capColor, fontWeight: 600,
+                    paddingLeft: 4, whiteSpace: "nowrap", overflow: "hidden",
+                    textOverflow: "ellipsis", pointerEvents: "none",
+                  }}>{cap.text}</span>
+                  {/* Drag-resize right edge */}
+                  <div
+                    onPointerDown={e => {
+                      e.stopPropagation();
+                      const startX = e.clientX;
+                      const origEnd = cap.endTime;
+                      const move = (me: PointerEvent) => {
+                        const dx = (me.clientX - startX) / pixelsPerSecond;
+                        onCaptionUpdate?.(cap.id, { endTime: Math.max(cap.startTime + 0.5, origEnd + dx) });
+                      };
+                      const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
+                      window.addEventListener("pointermove", move);
+                      window.addEventListener("pointerup", up);
+                      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+                    }}
+                    style={{
+                      position: "absolute", right: 0, top: 0, bottom: 0, width: 6,
+                      cursor: "e-resize", background: "transparent",
+                    }}
+                  />
+                </div>
+              );
+            })}
           </div>
         </div>
 
@@ -266,8 +396,115 @@ export default function TimelinePanel({
             </div>
           </div>
         )}
+
+        {/* Brand Outro track */}
+        {outroConfig && outroSceneId && (() => {
+          const outroScene = timeline.scenes.find(s => s.id === outroSceneId);
+          if (!outroScene) return null;
+          let outroStart = 0;
+          for (const s of timeline.scenes) {
+            if (s.id === outroSceneId) break;
+            outroStart += s.duration;
+          }
+          const outroW = outroScene.duration * pixelsPerSecond;
+          const outroLeft = outroStart * pixelsPerSecond;
+          return (
+            <div style={{ display: "flex", alignItems: "center", gap: 0 }}>
+              <TrackLabel style={{ color: "#c9a96e" }}>B</TrackLabel>
+              <div style={{ position: "relative", width: totalDuration * pixelsPerSecond, height: 22 }}>
+                <div style={{
+                  position: "absolute", top: 2, height: 18, left: outroLeft, width: Math.max(8, outroW),
+                  background: "rgba(201,169,110,0.18)", border: "1.5px solid rgba(201,169,110,0.6)",
+                  borderRadius: 5, display: "flex", alignItems: "center", overflow: "hidden", cursor: "pointer",
+                }} onClick={() => {}}>
+                  <span style={{ fontSize: 8.5, color: "#c9a96e", fontWeight: 700, paddingLeft: 5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    ★ {outroConfig.name}
+                  </span>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </div>
+
+    {/* Transition library modal */}
+    {librarySceneId && onSceneUpdate && (() => {
+      const scenes = timeline.scenes ?? [];
+      const tScene = scenes.find(s => s.id === librarySceneId) ?? null;
+      const tSceneIdx = scenes.findIndex(s => s.id === librarySceneId);
+      const prevScene = tSceneIdx > 0 ? scenes[tSceneIdx - 1] : null;
+      return (
+        <TransitionLibrary
+          sceneId={librarySceneId}
+          sceneName={tScene?.label ?? "Scene"}
+          currentTransition={tScene?.transition}
+          scene={tScene}
+          prevScene={prevScene}
+          timeline={timeline}
+          onApply={(cfg) => {
+            onSceneUpdate(librarySceneId, {
+              transition: {
+                type: cfg.type as import("@/types/timeline").TransitionType,
+                duration: cfg.duration,
+                speed: cfg.speed,
+                intensity: cfg.intensity,
+                direction: cfg.direction,
+                mode: cfg.mode,
+                easing: cfg.easing,
+                blurAmount: cfg.blurAmount,
+                motionStrength: cfg.motionStrength,
+              },
+            });
+          }}
+          onClose={() => setLibrarySceneId(null)}
+        />
+      );
+    })()}
+    </>
+  );
+}
+
+function InsertClipButton({ position, onInsert }: { position: number; onInsert: (pos: number, file: File) => void }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  return (
+    <>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="video/*,image/*,.mp4,.mov,.avi,.jpg,.jpeg,.png,.gif,.webp"
+        style={{ display: "none" }}
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) onInsert(position, file);
+          if (inputRef.current) inputRef.current.value = "";
+        }}
+      />
+      <button
+        onClick={(e) => { e.stopPropagation(); inputRef.current?.click(); }}
+        title={`Insert clip at position ${position + 1}`}
+        style={{
+          width: 18, height: 18, borderRadius: "50%", flexShrink: 0,
+          background: "var(--bg-elevated)",
+          border: "1.5px dashed var(--border-subtle)",
+          color: "var(--text-muted)", fontSize: 12,
+          cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+          margin: "0 1px", transition: "all 0.12s ease", lineHeight: 1,
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.borderColor = "var(--accent)";
+          e.currentTarget.style.color = "var(--accent)";
+          e.currentTarget.style.background = "var(--accent-bg)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.borderColor = "var(--border-subtle)";
+          e.currentTarget.style.color = "var(--text-muted)";
+          e.currentTarget.style.background = "var(--bg-elevated)";
+        }}
+      >
+        +
+      </button>
+    </>
   );
 }
 
@@ -292,38 +529,34 @@ function TrackLabel({ children, style }: { children: React.ReactNode; style?: Re
 
 function TimeRuler({ totalDuration, pixelsPerSecond, onSeek }: { totalDuration: number; pixelsPerSecond: number; onSeek: (t: number) => void }) {
   const marks = Array.from({ length: Math.ceil(totalDuration) + 1 }, (_, i) => i);
+  const OFFSET = 18 + 12; // track label width + padding
+
+  const seekFromEvent = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left - OFFSET;
+    onSeek(Math.max(0, Math.min(totalDuration, x / pixelsPerSecond)));
+  }, [totalDuration, pixelsPerSecond, onSeek]);
+
   return (
     <div
-      onClick={(e) => {
-        const rect = e.currentTarget.getBoundingClientRect();
-        const x = e.clientX - rect.left - (18 + 12);
-        const t = Math.max(0, Math.min(totalDuration, x / pixelsPerSecond));
-        onSeek(t);
-      }}
+      onPointerDown={e => { e.currentTarget.setPointerCapture(e.pointerId); seekFromEvent(e); }}
+      onPointerMove={e => { if (e.buttons === 1) seekFromEvent(e); }}
       style={{
-        height: 18,
-        paddingLeft: 18 + 12,
-        display: "flex",
-        alignItems: "flex-end",
-        overflowX: "hidden",
-        flexShrink: 0,
+        height: 18, paddingLeft: OFFSET,
+        display: "flex", alignItems: "flex-end",
+        overflowX: "hidden", flexShrink: 0,
         borderBottom: "1px solid var(--border-subtle)",
-        cursor: "pointer",
-        position: "relative",
+        cursor: "col-resize", position: "relative",
+        userSelect: "none",
       }}
     >
       {marks.map((t) => (
-        <div
-          key={t}
-          style={{
-            position: "absolute",
-            left: 18 + 12 + t * pixelsPerSecond,
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            pointerEvents: "none",
-          }}
-        >
+        <div key={t} style={{
+          position: "absolute",
+          left: OFFSET + t * pixelsPerSecond,
+          display: "flex", flexDirection: "column", alignItems: "center",
+          pointerEvents: "none",
+        }}>
           <div style={{ fontSize: 8.5, color: "var(--text-muted)", marginBottom: 2, whiteSpace: "nowrap" }}>
             {t % 5 === 0 ? `${t}s` : ""}
           </div>
@@ -335,11 +568,17 @@ function TimeRuler({ totalDuration, pixelsPerSecond, onSeek }: { totalDuration: 
 }
 
 function SceneChip({
-  scene, index, color, pixelsPerSecond, isActive, onClick, onDurationChange, clip,
+  scene, index, color, pixelsPerSecond, isActive, onClick, onDurationChange, onSceneUpdate, clip,
+  isDragOver, onDragStart, onDragOver, onDrop,
 }: {
   scene: Scene; index: number; color: string; pixelsPerSecond: number; isActive: boolean; onClick: () => void;
   onDurationChange?: (id: string, duration: number) => void;
+  onSceneUpdate?: (sceneId: string, patch: Partial<Scene>) => void;
   clip?: UploadedClip;
+  isDragOver?: boolean;
+  onDragStart?: (idx: number) => void;
+  onDragOver?: (idx: number) => void;
+  onDrop?: (idx: number) => void;
 }) {
   const width = scene.duration * pixelsPerSecond;
   const chipWidth = Math.max(width - 2, 32);
@@ -356,15 +595,29 @@ function SceneChip({
   const handleResizeDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!onDurationChange) return;
-    dragRef.current = { startX: e.clientX, startDur: scene.duration };
+    if (!onSceneUpdate && !onDurationChange) return;
+    dragRef.current = {
+      startX: e.clientX,
+      startDur: (scene.clipTrimEnd ?? scene.duration) - (scene.clipTrimStart ?? 0),
+    };
     setIsDragging(true);
 
     function onMove(ev: MouseEvent) {
-      if (!dragRef.current || !onDurationChange) return;
+      if (!dragRef.current) return;
       const deltaSec = (ev.clientX - dragRef.current.startX) / pixelsPerSecond;
-      const newDuration = Math.max(1, Math.round((dragRef.current.startDur + deltaSec) * 2) / 2);
-      onDurationChange(scene.id, newDuration);
+      if (onSceneUpdate) {
+        const trimStart = scene.clipTrimStart ?? 0;
+        const clipMaxDur = clip?.duration ?? (scene.clipTrimEnd ?? scene.duration);
+        const newTrimEnd = Math.min(
+          clipMaxDur,
+          Math.max(trimStart + 0.5, dragRef.current.startDur + deltaSec + trimStart)
+        );
+        const newDur = parseFloat((newTrimEnd - trimStart).toFixed(3));
+        onSceneUpdate(scene.id, { clipTrimEnd: newTrimEnd, duration: newDur });
+      } else if (onDurationChange) {
+        const newDuration = Math.max(1, Math.round((dragRef.current.startDur + deltaSec) * 2) / 2);
+        onDurationChange(scene.id, newDuration);
+      }
     }
 
     function onUp() {
@@ -376,26 +629,40 @@ function SceneChip({
 
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
-  }, [scene.id, scene.duration, pixelsPerSecond, onDurationChange]);
+  }, [scene.id, scene.duration, scene.clipTrimStart, scene.clipTrimEnd, pixelsPerSecond, onDurationChange, onSceneUpdate, clip]);
+
+  const borderColor = isDragOver
+    ? "var(--accent)"
+    : isActive
+    ? color
+    : isDragging
+    ? color
+    : "var(--border-subtle)";
 
   return (
     <div
+      data-scene-chip="1"
       className={`timeline-scene ${isActive ? "active" : ""}`}
       onClick={onClick}
+      draggable={true}
+      onDragStart={() => onDragStart?.(index)}
+      onDragOver={(e) => { e.preventDefault(); onDragOver?.(index); }}
+      onDrop={() => onDrop?.(index)}
       title={`${scene.label} · ${scene.duration}s${hasMedia ? " · has clip" : ""} · drag right edge to resize`}
       style={{
         width: chipWidth,
         height: hasMedia ? 72 : 38,
         borderRadius: 5,
-        border: `1.5px solid ${isActive ? color : isDragging ? color : "var(--border-subtle)"}`,
+        border: `1.5px solid ${borderColor}`,
         overflow: "hidden",
         position: "relative",
         flexShrink: 0,
         cursor: isDragging ? "col-resize" : "pointer",
         userSelect: "none",
         background: hasMedia ? "#000" : isActive ? `${color}22` : "var(--scene-chip)",
-        boxShadow: isActive ? `0 0 0 1px ${color}40` : "none",
+        boxShadow: isActive ? `0 0 0 1px ${color}40` : isDragOver ? `0 0 0 2px var(--accent)` : "none",
         transition: "border-color 0.12s ease, box-shadow 0.12s ease",
+        opacity: isDragOver ? 0.85 : 1,
       }}
     >
       {/* ── Media thumbnail ── */}
@@ -522,7 +789,7 @@ function SceneChip({
       </div>
 
       {/* ── Resize handle ── */}
-      {onDurationChange && (
+      {(onDurationChange || onSceneUpdate) && (
         <div
           onMouseDown={handleResizeDown}
           title="Drag to resize"
@@ -578,6 +845,62 @@ function CaptionTrackChip({ scene, pixelsPerSecond, captionCount }: { scene: Sce
         {scene.captions?.[0]?.text?.slice(0, 12) ?? ""}
         {(scene.captions?.[0]?.text?.length ?? 0) > 12 ? "…" : ""}
       </div>
+    </div>
+  );
+}
+
+
+function TransitionConnector({
+  scene,
+  onOpenLibrary,
+}: {
+  scene: Scene;
+  onOpenLibrary: () => void;
+}) {
+  const currentType = scene.transition?.type ?? "cut";
+  const currentDur  = scene.transition?.duration ?? 0;
+  const icon = TRANSITION_ICONS[currentType] ?? "⟶";
+  const isNonCut = currentType !== "cut";
+
+  const shortLabel = currentType === "cut"
+    ? "CUT"
+    : currentType.split("-").map(w => w[0].toUpperCase()).join("");
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0, margin: "0 2px", position: "relative", zIndex: 5 }}>
+      <button
+        onClick={(e) => { e.stopPropagation(); onOpenLibrary(); }}
+        title={`Transition: ${currentType} — click to edit`}
+        style={{
+          height: 24, borderRadius: 12, flexShrink: 0, padding: "0 8px",
+          minWidth: 40,
+          background: isNonCut ? "rgba(201,169,110,0.18)" : "var(--bg-elevated)",
+          border: `1.5px solid ${isNonCut ? "rgba(201,169,110,0.5)" : "var(--border-subtle)"}`,
+          color: isNonCut ? "var(--accent)" : "var(--text-muted)",
+          fontSize: 9, cursor: "pointer",
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 3,
+          transition: "all 0.12s ease",
+          whiteSpace: "nowrap",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.borderColor = "var(--accent)";
+          e.currentTarget.style.background = "rgba(201,169,110,0.25)";
+          e.currentTarget.style.color = "var(--accent)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.borderColor = isNonCut ? "rgba(201,169,110,0.5)" : "var(--border-subtle)";
+          e.currentTarget.style.background = isNonCut ? "rgba(201,169,110,0.18)" : "var(--bg-elevated)";
+          e.currentTarget.style.color = isNonCut ? "var(--accent)" : "var(--text-muted)";
+        }}
+      >
+        <span style={{ fontSize: 9 }}>{icon}</span>
+        <span style={{ fontSize: 8.5, fontWeight: 600, letterSpacing: "0.02em" }}>{shortLabel}</span>
+      </button>
+      {isNonCut && currentDur > 0 && (
+        <div style={{ fontSize: 7, color: "var(--accent)", opacity: 0.65, marginTop: 1, pointerEvents: "none", whiteSpace: "nowrap" }}>
+          {currentDur.toFixed(1)}s
+        </div>
+      )}
     </div>
   );
 }
