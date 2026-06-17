@@ -5,7 +5,7 @@ import { userQueries } from "@/lib/user-db";
 export async function GET() {
   const session = await getServerSession();
   if (!session) return NextResponse.json({ user: null }, { status: 401 });
-  const user = userQueries.findById(session.userId);
+  const user = await userQueries.findById(session.userId);
   if (!user) return NextResponse.json({ user: null }, { status: 401 });
   return NextResponse.json({
     user: {

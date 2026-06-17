@@ -11,7 +11,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Email and password are required." }, { status: 400 });
     }
 
-    const user = userQueries.findByEmail(email.trim().toLowerCase());
+    const user = await userQueries.findByEmail(email.trim().toLowerCase());
     if (!user) {
       return NextResponse.json({ error: "No account found with this email." }, { status: 401 });
     }
@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Incorrect password. Please try again." }, { status: 401 });
     }
 
-    userQueries.updateLastLogin(user.id);
+    await userQueries.updateLastLogin(user.id);
 
     const token = await createSession({
       userId: user.id,

@@ -9,7 +9,7 @@ export async function GET(req: NextRequest) {
     const workspaceSlug = searchParams.get("workspaceSlug") ?? "asaya";
     const limit = Math.min(parseInt(searchParams.get("limit") ?? "20"), 50);
 
-    const rows = getRecentGenerations({ workspaceSlug, limit });
+    const rows = await getRecentGenerations({ workspaceSlug, limit });
 
     return NextResponse.json({
       generations: rows.map((g) => ({

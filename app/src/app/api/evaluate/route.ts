@@ -21,7 +21,7 @@ export const maxDuration = 60;
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { timeline, workflowId, workspaceSlug, originalPrompt, targetDuration } = body as {
+    const { timeline, workflowId, workspaceSlug, originalPrompt } = body as {
       timeline: Timeline;
       workflowId?: string;
       workspaceSlug: string;
@@ -45,10 +45,8 @@ export async function POST(req: NextRequest) {
 
     const result = await runEvaluator({ timeline, brand: workspace, workflow, originalPrompt });
 
-    // Save evaluation result
-    const runId = uuidv4();
-    saveEvaluationResult({
-      runId,
+    await saveEvaluationResult({
+      runId: uuidv4(),
       workspaceSlug,
       workflowId: workflow.id,
       overallScore: result.overallScore,

@@ -7,7 +7,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const session = await getServerSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id } = await params;
-  const draft = draftQueries.findById(id, session.userId);
+  const draft = await draftQueries.findById(id, session.userId);
   if (!draft) return NextResponse.json({ error: "Not found" }, { status: 404 });
   return NextResponse.json({
     draft: {
@@ -28,15 +28,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { action, ...body } = await req.json();
 
   if (action === "rename") {
-    draftQueries.rename(id, session.userId, body.name);
+    await draftQueries.rename(id, session.userId, body.name);
   } else if (action === "setStatus") {
-    draftQueries.setStatus(id, session.userId, body.status);
+    await draftQueries.setStatus(id, session.userId, body.status);
   } else if (action === "duplicate") {
-    const newId = draftQueries.duplicate(id, uuidv4(), session.userId, body.name ?? "Copy");
+    const newId = await draftQueries.duplicate(id, uuidv4(), session.userId, body.name ?? "Copy");
     return NextResponse.json({ id: newId, success: true });
   } else {
-    // Autosave
-    draftQueries.autosave({
+    await draftQueries.autosave({
       id, user_id: session.userId,
       name: body.name ?? "Untitled Draft",
       prompt: body.prompt ?? null,
@@ -57,6 +56,6 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   const session = await getServerSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id } = await params;
-  draftQueries.delete(id, session.userId);
+  await draftQueries.delete(id, session.userId);
   return NextResponse.json({ success: true });
 }

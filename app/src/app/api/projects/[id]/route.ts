@@ -7,7 +7,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id } = await params;
   const patch = await req.json();
-  projectQueries.update(id, session.userId, patch);
+  await projectQueries.update(id, session.userId, patch);
   return NextResponse.json({ success: true });
 }
 
@@ -15,6 +15,6 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   const session = await getServerSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id } = await params;
-  projectQueries.delete(id, session.userId);
+  await projectQueries.delete(id, session.userId);
   return NextResponse.json({ success: true });
 }

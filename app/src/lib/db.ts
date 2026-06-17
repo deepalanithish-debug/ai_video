@@ -1,141 +1,25 @@
 /**
- * Persistent SQLite memory layer.
+ * Persistent MongoDB memory layer.
  *
- * Tables:
+ * Collections (all in the "vydeo" database):
  *   generations         — every successful generation (learning corpus)
- *   workflow_runs       — every pipeline run with workflow/tool trace
- *   tool_executions     — per-tool timing and results within a run
- *   evaluation_results  — evaluation scores per run
- *   prompt_refinements  — original → refined prompt pairs with outcomes
- *   workspace_preferences — workspace-level stats
+ *   workflowRuns        — every pipeline run with workflow/tool trace
+ *   toolExecutions      — per-tool timing and results within a run
+ *   evaluationResults   — evaluation scores per run
+ *   promptRefinements   — original → refined prompt pairs with outcomes
+ *   workspacePreferences — workspace-level aggregate stats
  *
  * Purpose: The system should never start from zero.
  *          Past successful generations augment future prompts.
  *          Evaluation scores guide which patterns to repeat.
  */
 
-import Database from "better-sqlite3";
-import path from "path";
-import { existsSync, mkdirSync } from "fs";
-
-const DATA_DIR = path.join(process.cwd(), "data");
-const DB_PATH  = path.join(DATA_DIR, "frameai.db");
-
-let _db: Database.Database | null = null;
-
-export function getDb(): Database.Database {
-  if (_db) return _db;
-  if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
-  _db = new Database(DB_PATH);
-  _db.pragma("journal_mode = WAL");
-  _db.pragma("foreign_keys = ON");
-  initSchema(_db);
-  return _db;
-}
-
-function initSchema(db: Database.Database): void {
-  db.exec(`
-    -- Core generations corpus
-    CREATE TABLE IF NOT EXISTS generations (
-      id            INTEGER PRIMARY KEY AUTOINCREMENT,
-      workspace_slug TEXT NOT NULL,
-      run_id        TEXT,
-      prompt_hash   TEXT NOT NULL,
-      prompt_text   TEXT NOT NULL,
-      cluster       TEXT NOT NULL,
-      workflow_id   TEXT,
-      aspect_ratio  TEXT,
-      duration_sec  INTEGER,
-      timeline_json TEXT NOT NULL,
-      trace_json    TEXT,
-      qa_score      INTEGER,
-      eval_score    INTEGER,
-      created_at    TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-    CREATE INDEX IF NOT EXISTS idx_gen_ws_cluster  ON generations(workspace_slug, cluster);
-    CREATE INDEX IF NOT EXISTS idx_gen_eval        ON generations(workspace_slug, eval_score DESC);
-    CREATE INDEX IF NOT EXISTS idx_gen_run_id      ON generations(run_id);
-
-    -- Workflow run records (one per API call)
-    CREATE TABLE IF NOT EXISTS workflow_runs (
-      run_id         TEXT PRIMARY KEY,
-      workspace_slug TEXT NOT NULL,
-      workflow_id    TEXT NOT NULL,
-      cluster        TEXT NOT NULL,
-      mode           TEXT NOT NULL,
-      prompt_text    TEXT NOT NULL,
-      tools_executed TEXT NOT NULL,   -- JSON array of tool names
-      total_ms       INTEGER,
-      eval_score     INTEGER,
-      passed_qa      INTEGER DEFAULT 0,
-      created_at     TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-    CREATE INDEX IF NOT EXISTS idx_runs_ws         ON workflow_runs(workspace_slug);
-    CREATE INDEX IF NOT EXISTS idx_runs_cluster    ON workflow_runs(cluster);
-    CREATE INDEX IF NOT EXISTS idx_runs_score      ON workflow_runs(eval_score DESC);
-
-    -- Per-tool execution records within a run
-    CREATE TABLE IF NOT EXISTS tool_executions (
-      id            INTEGER PRIMARY KEY AUTOINCREMENT,
-      run_id        TEXT NOT NULL,
-      tool_name     TEXT NOT NULL,
-      model_used    TEXT,
-      duration_ms   INTEGER,
-      success       INTEGER NOT NULL DEFAULT 1,
-      error_msg     TEXT,
-      created_at    TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-    CREATE INDEX IF NOT EXISTS idx_tool_run_id     ON tool_executions(run_id);
-    CREATE INDEX IF NOT EXISTS idx_tool_name       ON tool_executions(tool_name);
-
-    -- Evaluation scores per run
-    CREATE TABLE IF NOT EXISTS evaluation_results (
-      id               INTEGER PRIMARY KEY AUTOINCREMENT,
-      run_id           TEXT NOT NULL,
-      workspace_slug   TEXT NOT NULL,
-      workflow_id      TEXT NOT NULL,
-      overall_score    INTEGER NOT NULL,
-      passed_qa        INTEGER NOT NULL DEFAULT 0,
-      criteria_json    TEXT NOT NULL,   -- JSON array of CriterionScore
-      issues_json      TEXT,
-      improvements_json TEXT,
-      eval_model       TEXT,
-      created_at       TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-    CREATE INDEX IF NOT EXISTS idx_eval_run_id     ON evaluation_results(run_id);
-    CREATE INDEX IF NOT EXISTS idx_eval_ws_score   ON evaluation_results(workspace_slug, overall_score DESC);
-
-    -- Prompt learning layer
-    CREATE TABLE IF NOT EXISTS prompt_refinements (
-      id              INTEGER PRIMARY KEY AUTOINCREMENT,
-      workspace_slug  TEXT NOT NULL,
-      original_prompt TEXT NOT NULL,
-      refined_prompt  TEXT NOT NULL,
-      cluster         TEXT,
-      workflow_id     TEXT,
-      success_score   INTEGER,
-      notes           TEXT,
-      created_at      TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-    CREATE INDEX IF NOT EXISTS idx_refine_ws       ON prompt_refinements(workspace_slug, cluster);
-
-    -- Workspace-level aggregate stats
-    CREATE TABLE IF NOT EXISTS workspace_preferences (
-      workspace_slug      TEXT PRIMARY KEY,
-      total_generations   INTEGER DEFAULT 0,
-      total_runs          INTEGER DEFAULT 0,
-      preferred_cluster   TEXT,
-      avg_eval_score      REAL,
-      preferences_json    TEXT,
-      updated_at          TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-  `);
-}
+import { getDb } from "./mongodb";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface StoredGeneration {
-  id: number;
+  id: string;
   workspace_slug: string;
   run_id: string | null;
   prompt_text: string;
@@ -163,7 +47,7 @@ export interface StoredWorkflowRun {
 
 // ── Write operations ──────────────────────────────────────────────────────────
 
-export function saveGeneration(params: {
+export async function saveGeneration(params: {
   workspaceSlug: string;
   runId?: string;
   prompt: string;
@@ -175,41 +59,41 @@ export function saveGeneration(params: {
   trace?: unknown;
   qaScore?: number;
   evalScore?: number;
-}): void {
+}): Promise<void> {
   try {
-    const db = getDb();
-    db.prepare(`
-      INSERT INTO generations
-        (workspace_slug, run_id, prompt_hash, prompt_text, cluster, workflow_id, aspect_ratio, duration_sec, timeline_json, trace_json, qa_score, eval_score)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      params.workspaceSlug,
-      params.runId ?? null,
-      simpleHash(params.prompt),
-      params.prompt.slice(0, 600),
-      params.cluster,
-      params.workflowId ?? null,
-      params.aspectRatio ?? null,
-      params.durationSec ?? null,
-      JSON.stringify(params.timeline),
-      params.trace ? JSON.stringify(params.trace) : null,
-      params.qaScore ?? null,
-      params.evalScore ?? null,
-    );
+    const db = await getDb();
+    const now = new Date().toISOString();
+    await db.collection("generations").insertOne({
+      workspace_slug: params.workspaceSlug,
+      run_id: params.runId ?? null,
+      prompt_hash: simpleHash(params.prompt),
+      prompt_text: params.prompt.slice(0, 600),
+      cluster: params.cluster,
+      workflow_id: params.workflowId ?? null,
+      aspect_ratio: params.aspectRatio ?? null,
+      duration_sec: params.durationSec ?? null,
+      timeline_json: JSON.stringify(params.timeline),
+      trace_json: params.trace ? JSON.stringify(params.trace) : null,
+      qa_score: params.qaScore ?? null,
+      eval_score: params.evalScore ?? null,
+      created_at: now,
+    });
 
-    db.prepare(`
-      INSERT INTO workspace_preferences (workspace_slug, total_generations, updated_at)
-      VALUES (?, 1, datetime('now'))
-      ON CONFLICT(workspace_slug) DO UPDATE SET
-        total_generations = total_generations + 1,
-        updated_at = datetime('now')
-    `).run(params.workspaceSlug);
+    await db.collection("workspacePreferences").updateOne(
+      { workspace_slug: params.workspaceSlug },
+      {
+        $inc: { total_generations: 1 },
+        $set: { updated_at: now },
+        $setOnInsert: { workspace_slug: params.workspaceSlug, total_runs: 0, preferred_cluster: null, avg_eval_score: null },
+      },
+      { upsert: true },
+    );
   } catch (e) {
     console.warn("[db] saveGeneration:", (e as Error).message);
   }
 }
 
-export function saveWorkflowRun(params: {
+export async function saveWorkflowRun(params: {
   runId: string;
   workspaceSlug: string;
   workflowId: string;
@@ -220,64 +104,67 @@ export function saveWorkflowRun(params: {
   totalMs?: number;
   evalScore?: number;
   passedQA?: boolean;
-}): void {
+}): Promise<void> {
   try {
-    const db = getDb();
-    db.prepare(`
-      INSERT OR REPLACE INTO workflow_runs
-        (run_id, workspace_slug, workflow_id, cluster, mode, prompt_text, tools_executed, total_ms, eval_score, passed_qa)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      params.runId,
-      params.workspaceSlug,
-      params.workflowId,
-      params.cluster,
-      params.mode,
-      params.prompt.slice(0, 600),
-      JSON.stringify(params.toolsExecuted),
-      params.totalMs ?? null,
-      params.evalScore ?? null,
-      params.passedQA ? 1 : 0,
+    const db = await getDb();
+    const now = new Date().toISOString();
+    await db.collection("workflowRuns").replaceOne(
+      { run_id: params.runId },
+      {
+        run_id: params.runId,
+        workspace_slug: params.workspaceSlug,
+        workflow_id: params.workflowId,
+        cluster: params.cluster,
+        mode: params.mode,
+        prompt_text: params.prompt.slice(0, 600),
+        tools_executed: JSON.stringify(params.toolsExecuted),
+        total_ms: params.totalMs ?? null,
+        eval_score: params.evalScore ?? null,
+        passed_qa: params.passedQA ? 1 : 0,
+        created_at: now,
+      },
+      { upsert: true },
     );
 
-    db.prepare(`
-      INSERT INTO workspace_preferences (workspace_slug, total_runs, updated_at)
-      VALUES (?, 1, datetime('now'))
-      ON CONFLICT(workspace_slug) DO UPDATE SET
-        total_runs = total_runs + 1,
-        updated_at = datetime('now')
-    `).run(params.workspaceSlug);
+    await db.collection("workspacePreferences").updateOne(
+      { workspace_slug: params.workspaceSlug },
+      {
+        $inc: { total_runs: 1 },
+        $set: { updated_at: now },
+        $setOnInsert: { workspace_slug: params.workspaceSlug, total_generations: 0, preferred_cluster: null, avg_eval_score: null },
+      },
+      { upsert: true },
+    );
   } catch (e) {
     console.warn("[db] saveWorkflowRun:", (e as Error).message);
   }
 }
 
-export function saveToolExecution(params: {
+export async function saveToolExecution(params: {
   runId: string;
   toolName: string;
   modelUsed?: string;
   durationMs?: number;
   success: boolean;
   errorMsg?: string;
-}): void {
+}): Promise<void> {
   try {
-    getDb().prepare(`
-      INSERT INTO tool_executions (run_id, tool_name, model_used, duration_ms, success, error_msg)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(
-      params.runId,
-      params.toolName,
-      params.modelUsed ?? null,
-      params.durationMs ?? null,
-      params.success ? 1 : 0,
-      params.errorMsg ?? null,
-    );
+    const db = await getDb();
+    await db.collection("toolExecutions").insertOne({
+      run_id: params.runId,
+      tool_name: params.toolName,
+      model_used: params.modelUsed ?? null,
+      duration_ms: params.durationMs ?? null,
+      success: params.success ? 1 : 0,
+      error_msg: params.errorMsg ?? null,
+      created_at: new Date().toISOString(),
+    });
   } catch (e) {
     console.warn("[db] saveToolExecution:", (e as Error).message);
   }
 }
 
-export function saveEvaluationResult(params: {
+export async function saveEvaluationResult(params: {
   runId: string;
   workspaceSlug: string;
   workflowId: string;
@@ -287,29 +174,27 @@ export function saveEvaluationResult(params: {
   issues?: string[];
   improvements?: string[];
   evalModel?: string;
-}): void {
+}): Promise<void> {
   try {
-    getDb().prepare(`
-      INSERT INTO evaluation_results
-        (run_id, workspace_slug, workflow_id, overall_score, passed_qa, criteria_json, issues_json, improvements_json, eval_model)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      params.runId,
-      params.workspaceSlug,
-      params.workflowId,
-      params.overallScore,
-      params.passedQA ? 1 : 0,
-      JSON.stringify(params.criteria),
-      params.issues ? JSON.stringify(params.issues) : null,
-      params.improvements ? JSON.stringify(params.improvements) : null,
-      params.evalModel ?? null,
-    );
+    const db = await getDb();
+    await db.collection("evaluationResults").insertOne({
+      run_id: params.runId,
+      workspace_slug: params.workspaceSlug,
+      workflow_id: params.workflowId,
+      overall_score: params.overallScore,
+      passed_qa: params.passedQA ? 1 : 0,
+      criteria_json: JSON.stringify(params.criteria),
+      issues_json: params.issues ? JSON.stringify(params.issues) : null,
+      improvements_json: params.improvements ? JSON.stringify(params.improvements) : null,
+      eval_model: params.evalModel ?? null,
+      created_at: new Date().toISOString(),
+    });
   } catch (e) {
     console.warn("[db] saveEvaluationResult:", (e as Error).message);
   }
 }
 
-export function savePromptRefinement(params: {
+export async function savePromptRefinement(params: {
   workspaceSlug: string;
   original: string;
   refined: string;
@@ -317,20 +202,19 @@ export function savePromptRefinement(params: {
   workflowId?: string;
   successScore?: number;
   notes?: string;
-}): void {
+}): Promise<void> {
   try {
-    getDb().prepare(`
-      INSERT INTO prompt_refinements (workspace_slug, original_prompt, refined_prompt, cluster, workflow_id, success_score, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      params.workspaceSlug,
-      params.original.slice(0, 600),
-      params.refined.slice(0, 600),
-      params.cluster ?? null,
-      params.workflowId ?? null,
-      params.successScore ?? null,
-      params.notes ?? null,
-    );
+    const db = await getDb();
+    await db.collection("promptRefinements").insertOne({
+      workspace_slug: params.workspaceSlug,
+      original_prompt: params.original.slice(0, 600),
+      refined_prompt: params.refined.slice(0, 600),
+      cluster: params.cluster ?? null,
+      workflow_id: params.workflowId ?? null,
+      success_score: params.successScore ?? null,
+      notes: params.notes ?? null,
+      created_at: new Date().toISOString(),
+    });
   } catch (e) {
     console.warn("[db] savePromptRefinement:", (e as Error).message);
   }
@@ -338,40 +222,48 @@ export function savePromptRefinement(params: {
 
 // ── Read operations ───────────────────────────────────────────────────────────
 
-export function getSimilarGenerations(params: {
+export async function getSimilarGenerations(params: {
   workspaceSlug: string;
   cluster: string;
   workflowId?: string;
   limit?: number;
-}): StoredGeneration[] {
+}): Promise<StoredGeneration[]> {
   try {
-    const db = getDb();
-    if (params.workflowId) {
-      return db.prepare(`
-        SELECT id, workspace_slug, run_id, prompt_text, cluster, workflow_id, timeline_json, qa_score, eval_score, created_at
-        FROM generations
-        WHERE workspace_slug = ? AND cluster = ? AND workflow_id = ?
-        ORDER BY COALESCE(eval_score, qa_score, 50) DESC, created_at DESC
-        LIMIT ?
-      `).all(params.workspaceSlug, params.cluster, params.workflowId, params.limit ?? 2) as StoredGeneration[];
-    }
-    return db.prepare(`
-      SELECT id, workspace_slug, run_id, prompt_text, cluster, workflow_id, timeline_json, qa_score, eval_score, created_at
-      FROM generations
-      WHERE workspace_slug = ? AND cluster = ?
-      ORDER BY COALESCE(eval_score, qa_score, 50) DESC, created_at DESC
-      LIMIT ?
-    `).all(params.workspaceSlug, params.cluster, params.limit ?? 2) as StoredGeneration[];
+    const db = await getDb();
+    const filter: Record<string, unknown> = {
+      workspace_slug: params.workspaceSlug,
+      cluster: params.cluster,
+    };
+    if (params.workflowId) filter.workflow_id = params.workflowId;
+
+    const docs = await db.collection("generations")
+      .find(filter)
+      .sort({ eval_score: -1, created_at: -1 })
+      .limit(params.limit ?? 2)
+      .toArray();
+
+    return docs.map(d => ({
+      id: d._id.toString(),
+      workspace_slug: d.workspace_slug,
+      run_id: d.run_id,
+      prompt_text: d.prompt_text,
+      cluster: d.cluster,
+      workflow_id: d.workflow_id,
+      timeline_json: d.timeline_json,
+      qa_score: d.qa_score,
+      eval_score: d.eval_score,
+      created_at: d.created_at,
+    }));
   } catch {
     return [];
   }
 }
 
-export function getRecentGenerations(params: {
+export async function getRecentGenerations(params: {
   workspaceSlug: string;
   limit?: number;
-}): Array<{
-  id: number;
+}): Promise<Array<{
+  id: string;
   prompt_text: string;
   cluster: string;
   timeline_json: string;
@@ -379,68 +271,70 @@ export function getRecentGenerations(params: {
   created_at: string;
   aspect_ratio: string | null;
   duration_sec: number | null;
-}> {
+}>> {
   try {
-    const db = getDb();
-    return db.prepare(`
-      SELECT id, prompt_text, cluster, timeline_json, eval_score, created_at, aspect_ratio, duration_sec
-      FROM generations
-      WHERE workspace_slug = ?
-      ORDER BY created_at DESC
-      LIMIT ?
-    `).all(params.workspaceSlug, params.limit ?? 20) as Array<{
-      id: number;
-      prompt_text: string;
-      cluster: string;
-      timeline_json: string;
-      eval_score: number | null;
-      created_at: string;
-      aspect_ratio: string | null;
-      duration_sec: number | null;
-    }>;
+    const db = await getDb();
+    const docs = await db.collection("generations")
+      .find(
+        { workspace_slug: params.workspaceSlug },
+        { projection: { prompt_text: 1, cluster: 1, timeline_json: 1, eval_score: 1, created_at: 1, aspect_ratio: 1, duration_sec: 1 } },
+      )
+      .sort({ created_at: -1 })
+      .limit(params.limit ?? 20)
+      .toArray();
+
+    return docs.map(d => ({
+      id: d._id.toString(),
+      prompt_text: d.prompt_text,
+      cluster: d.cluster,
+      timeline_json: d.timeline_json,
+      eval_score: d.eval_score ?? null,
+      created_at: d.created_at,
+      aspect_ratio: d.aspect_ratio ?? null,
+      duration_sec: d.duration_sec ?? null,
+    }));
   } catch {
     return [];
   }
 }
 
-export function getWorkflowRunHistory(params: {
+export async function getWorkflowRunHistory(params: {
   workspaceSlug: string;
   cluster?: string;
   limit?: number;
-}): StoredWorkflowRun[] {
+}): Promise<StoredWorkflowRun[]> {
   try {
-    const db = getDb();
-    if (params.cluster) {
-      return db.prepare(`
-        SELECT * FROM workflow_runs
-        WHERE workspace_slug = ? AND cluster = ?
-        ORDER BY created_at DESC LIMIT ?
-      `).all(params.workspaceSlug, params.cluster, params.limit ?? 10) as StoredWorkflowRun[];
-    }
-    return db.prepare(`
-      SELECT * FROM workflow_runs
-      WHERE workspace_slug = ?
-      ORDER BY created_at DESC LIMIT ?
-    `).all(params.workspaceSlug, params.limit ?? 10) as StoredWorkflowRun[];
+    const db = await getDb();
+    const filter: Record<string, unknown> = { workspace_slug: params.workspaceSlug };
+    if (params.cluster) filter.cluster = params.cluster;
+
+    const docs = await db.collection("workflowRuns")
+      .find(filter, { projection: { _id: 0 } })
+      .sort({ created_at: -1 })
+      .limit(params.limit ?? 10)
+      .toArray();
+
+    return docs as unknown as StoredWorkflowRun[];
   } catch {
     return [];
   }
 }
 
-export function getWorkspaceStats(workspaceSlug: string): {
+export async function getWorkspaceStats(workspaceSlug: string): Promise<{
   totalGenerations: number;
   totalRuns: number;
   avgEvalScore: number | null;
-} {
+}> {
   try {
-    const row = getDb().prepare(`
-      SELECT total_generations, total_runs, avg_eval_score
-      FROM workspace_preferences WHERE workspace_slug = ?
-    `).get(workspaceSlug) as { total_generations: number; total_runs: number; avg_eval_score: number | null } | undefined;
+    const db = await getDb();
+    const doc = await db.collection("workspacePreferences").findOne(
+      { workspace_slug: workspaceSlug },
+      { projection: { _id: 0 } },
+    );
     return {
-      totalGenerations: row?.total_generations ?? 0,
-      totalRuns: row?.total_runs ?? 0,
-      avgEvalScore: row?.avg_eval_score ?? null,
+      totalGenerations: doc?.total_generations ?? 0,
+      totalRuns: doc?.total_runs ?? 0,
+      avgEvalScore: doc?.avg_eval_score ?? null,
     };
   } catch {
     return { totalGenerations: 0, totalRuns: 0, avgEvalScore: null };

@@ -19,7 +19,6 @@ export async function POST(req: NextRequest) {
   try {
     const { firstName, lastName, email, password, confirmPassword } = await req.json();
 
-    // Validation
     if (!firstName?.trim() || !lastName?.trim()) {
       return NextResponse.json({ error: "First and last name are required." }, { status: 400 });
     }
@@ -35,16 +34,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Passwords do not match." }, { status: 400 });
     }
 
-    // Check duplicate
-    const existing = userQueries.findByEmail(email.trim().toLowerCase());
+    const existing = await userQueries.findByEmail(email.trim().toLowerCase());
     if (existing) {
       return NextResponse.json({ error: "An account with this email already exists." }, { status: 409 });
     }
 
-    // Create user
     const id = uuidv4();
     const hash = await bcrypt.hash(password, 12);
-    userQueries.create({
+    await userQueries.create({
       id,
       first_name: firstName.trim(),
       last_name: lastName.trim(),
@@ -53,7 +50,6 @@ export async function POST(req: NextRequest) {
       plan: "free",
     });
 
-    // Auto-login
     const token = await createSession({ userId: id, email: email.trim().toLowerCase(), firstName: firstName.trim(), plan: "free" });
     const res = NextResponse.json({ success: true, firstName: firstName.trim() });
     res.cookies.set(SESSION_COOKIE, token, {

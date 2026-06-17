@@ -6,7 +6,7 @@ import { draftQueries } from "@/lib/user-db";
 export async function GET() {
   const session = await getServerSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const drafts = draftQueries.list(session.userId);
+  const drafts = await draftQueries.list(session.userId);
   return NextResponse.json({ drafts });
 }
 
@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const body = await req.json();
   const id = body.id ?? uuidv4();
-  draftQueries.autosave({
+  await draftQueries.autosave({
     id, user_id: session.userId,
     name: body.name ?? "Untitled Draft",
     prompt: body.prompt ?? null,

@@ -140,7 +140,7 @@ export async function runAgentPipeline(params: {
     : prompt;
 
   // ── Retrieve past examples from memory ─────────────────────────────────────
-  const pastGens = getSimilarGenerations({ workspaceSlug, cluster: plan.cluster, workflowId: workflow.id, limit: 2 });
+  const pastGens = await getSimilarGenerations({ workspaceSlug, cluster: plan.cluster, workflowId: workflow.id, limit: 2 });
   const pastExamples = pastGens.length > 0
     ? pastGens.map((g, i) => `Example ${i + 1} (score ${g.eval_score ?? g.qa_score ?? "?"}): "${g.prompt_text.slice(0, 80)}…"`).join("\n")
     : undefined;
@@ -159,7 +159,7 @@ export async function runAgentPipeline(params: {
     try {
       if (toolName === "video-analysis" && hasClips) {
         const result = await videoAnalysisTool.execute({ clips }, ctx);
-        saveToolExecution({ runId, toolName, modelUsed: result.modelUsed, durationMs: result.durationMs, success: result.success, errorMsg: result.error });
+        void saveToolExecution({ runId, toolName, modelUsed: result.modelUsed, durationMs: result.durationMs, success: result.success, errorMsg: result.error });
         if (result.success && result.data) videoAnalysisResult = result.data;
         trace.push({
           stage: "Video Analysis",
@@ -176,7 +176,7 @@ export async function runAgentPipeline(params: {
           platform: plan.platform,
           cluster: plan.cluster,
         }, ctx);
-        saveToolExecution({ runId, toolName, modelUsed: result.modelUsed, durationMs: result.durationMs, success: result.success });
+        void saveToolExecution({ runId, toolName, modelUsed: result.modelUsed, durationMs: result.durationMs, success: result.success });
         if (result.success && result.data) hookResult = result.data;
         trace.push({
           stage: "Hook Detection",
@@ -205,7 +205,7 @@ export async function runAgentPipeline(params: {
             platform: plan.platform,
           },
         }, ctx);
-        saveToolExecution({ runId, toolName, modelUsed: result.modelUsed, durationMs: result.durationMs, success: result.success, errorMsg: result.error });
+        void saveToolExecution({ runId, toolName, modelUsed: result.modelUsed, durationMs: result.durationMs, success: result.success, errorMsg: result.error });
         if (!result.success || !result.data) throw new Error(result.error ?? "Timeline generation failed");
         timeline = result.data.timeline;
         suggestions = result.data.suggestions;
@@ -290,7 +290,7 @@ export async function runAgentPipeline(params: {
 
     } catch (toolError) {
       const errMsg = toolError instanceof Error ? toolError.message : String(toolError);
-      saveToolExecution({ runId, toolName, durationMs: Date.now() - t0, success: false, errorMsg: errMsg });
+      void saveToolExecution({ runId, toolName, durationMs: Date.now() - t0, success: false, errorMsg: errMsg });
       if (toolName === "timeline-generator") throw toolError;
       trace.push({ stage: `${toolName} (failed)`, model: "—", durationMs: Date.now() - t0, decision: errMsg.slice(0, 80) });
     }
@@ -341,7 +341,7 @@ export async function runAgentPipeline(params: {
       if (!payload) continue;
       const { toolName, result, durationMs } = payload;
 
-      saveToolExecution({ runId, toolName, modelUsed: result.modelUsed, durationMs, success: result.success });
+      void saveToolExecution({ runId, toolName, modelUsed: result.modelUsed, durationMs, success: result.success });
       toolsExecuted.push(toolName);
 
       if (toolName === "transition-planner") {
@@ -402,7 +402,7 @@ export async function runAgentPipeline(params: {
   try {
     const totalMs = Date.now() - pipelineStart;
 
-    saveGeneration({
+    await saveGeneration({
       workspaceSlug, runId, prompt,
       cluster: plan.cluster,
       workflowId: workflow.id,
@@ -411,7 +411,7 @@ export async function runAgentPipeline(params: {
       evalScore: evalResult.overallScore,
     });
 
-    saveWorkflowRun({
+    await saveWorkflowRun({
       runId, workspaceSlug,
       workflowId: workflow.id,
       cluster: plan.cluster,
@@ -423,7 +423,7 @@ export async function runAgentPipeline(params: {
       passedQA: evalResult.passedQA,
     });
 
-    saveEvaluationResult({
+    await saveEvaluationResult({
       runId, workspaceSlug,
       workflowId: workflow.id,
       overallScore: evalResult.overallScore,
