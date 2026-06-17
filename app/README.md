@@ -282,7 +282,7 @@ Live animated preview card. AI smart suggestion chip.
 | Framework | Next.js 14 (App Router) |
 | Language | TypeScript (strict) |
 | Styling | Inline styles + CSS custom properties |
-| Database | SQLite via `better-sqlite3` (WAL mode, FK enforcement) |
+| Database | MongoDB via official `mongodb` driver (Atlas or self-hosted) |
 | Auth | `jose` (JWT HS256), `bcryptjs` (cost 12) |
 | AI text/multimodal | Gemini 2.5 Pro + Flash via Vertex AI |
 | AI images | Imagen 3 via Vertex AI |
@@ -308,13 +308,17 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Open http://localhost:3000. SQLite databases are created automatically in `./data/` on first run.
+Open http://localhost:3000. MongoDB collections are created automatically on first write.
 
 ---
 
 ## Environment Variables
 
 ```env
+# MongoDB
+MONGODB_URI=mongodb+srv://<user>:<password>@cluster0.xxxxx.mongodb.net/
+MONGODB_DB=ai_video   # optional, defaults to "vydeo"
+
 # Google Cloud Project
 GOOGLE_PROJECT_ID=your-gcp-project-id
 GOOGLE_LOCATION=us-central1
@@ -376,12 +380,12 @@ Browser
         │     └── polls fetchPredictOperation every 5s, up to 3 min
         │
         ├── /api/render ─────────── FFmpeg or Cloud Transcoder (maxDuration: 300s)
-        └── /api/drafts/* ────────── SQLite CRUD (session required)
+        └── /api/drafts/* ────────── MongoDB CRUD (session required)
 ```
 
 **Clip analysis flow:** When the user attaches videos in Storyboard mode, the browser extracts 3 JPEG keyframes per clip (15%/45%/75%) via canvas and sends them inline as base64 to `/api/lineup`. Gemini 2.5 Pro receives both the text brief and all keyframes, identifies the person or content in each clip from the visual evidence, and emits a `clipAssignments` array that maps `clipIndex → sceneId` in the order the brief requests. The cross-check rule in the timeline generator verifies the first scene maps to the "start" person and the last scene maps to the "end" person before returning.
 
-**Memory/learning loop:** Every completed generation is written to `frameai.db`. On the next generation for the same workspace, top past examples (by eval score) are injected as few-shot context — quality improves automatically over time.
+**Memory/learning loop:** Every completed generation is written to the `generations` collection in MongoDB. On the next generation for the same workspace, top past examples (by eval score) are injected as few-shot context — quality improves automatically over time.
 
 ---
 
@@ -439,26 +443,26 @@ All AI calls authenticate via self-signed RS256 JWTs (`createVertexJWT`) — no 
 
 ## Database
 
-Two SQLite databases auto-created in `./data/` on first run. Both use WAL journal mode and foreign key enforcement.
+MongoDB (Atlas or self-hosted). All collections live in a single database (default name `ai_video`, set via `MONGODB_DB`). Collections are created automatically on first write — no migration scripts needed.
 
-**`vydeo_users.db`** — user-facing data
+**User-facing collections**
 
-| Table | Key columns |
+| Collection | Key fields |
 |---|---|
-| `users` | id, first_name, last_name, email (unique), password_hash, plan, timestamps |
-| `projects` | id, user_id (FK), name, thumbnail, project_type, status |
-| `drafts` | id, project_id (nullable FK), user_id (FK), name, prompt, timeline_data (JSON), captions_data (JSON), transitions_data (JSON), effects_data (JSON), brand_settings (JSON), aspect_ratio, current_playhead, status, version, last_updated |
+| `users` | id, first_name, last_name, email (lowercase), password_hash, plan, created_at, updated_at, last_login_at |
+| `projects` | id, user_id, name, thumbnail, project_type, status, created_at, updated_at |
+| `drafts` | id, project_id, user_id, name, prompt, timeline_data, captions_data, transitions_data, effects_data, brand_settings, aspect_ratio, current_playhead, status, version, last_updated, created_at |
 
-**`frameai.db`** — AI generation memory
+**AI memory collections**
 
-| Table | Purpose |
+| Collection | Purpose |
 |---|---|
 | `generations` | Full timeline JSON + metadata per run |
-| `workflow_runs` | Planner decision, cluster, timing |
-| `tool_executions` | Per-tool trace (model, duration, errors) |
-| `evaluation_results` | QA score, per-criteria breakdown |
-| `prompt_refinements` | Prompt quality learning |
-| `workspace_preferences` | Aggregate stats per workspace |
+| `workflowRuns` | Planner decision, cluster, timing |
+| `toolExecutions` | Per-tool trace (model, duration, errors) |
+| `evaluationResults` | QA score, per-criteria breakdown |
+| `promptRefinements` | Prompt quality learning |
+| `workspacePreferences` | Aggregate stats per workspace |
 
 ---
 
