@@ -83,7 +83,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "GOOGLE_PROJECT_ID not configured" }, { status: 500 });
     }
 
-    const durationSecs = Math.min(duration ? parseInt(duration, 10) : 8, 10);
+    // Veo only supports 5–8 s output; snap the requested duration into that range.
+    // (Scene durations are often 3–4 s, which the model rejects with an "Unsupported
+    // output video duration" error — silently leaving the scene with no generated clip.)
+    const durationSecs = Math.max(5, Math.min(duration ? parseInt(duration, 10) : 8, 8));
     const ratio = aspectRatio ?? "9:16";
 
     const fullPrompt = [

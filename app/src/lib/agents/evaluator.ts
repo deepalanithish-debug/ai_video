@@ -133,7 +133,7 @@ Note: overallScore will be calculated from criteriaScores — do not include it.
   try {
     const data = await geminiRequest(MODEL, {
       contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: { responseMimeType: "application/json", temperature: 0.1, topP: 0.8 },
+      generationConfig: { responseMimeType: "application/json", temperature: 1.0, maxOutputTokens: 2048, thinkingConfig: { thinkingBudget: 2000 } },
     });
 
     const raw = (data as { candidates?: { content?: { parts?: { text?: string }[] } }[] })

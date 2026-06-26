@@ -66,16 +66,17 @@ export interface PipelineResult {
   dbSaved: boolean;
 }
 
-// ── Explicit model registry (for PromptBar display + documentation) ──────────
+// ── Explicit model registry (sourced from ai-router for single point of truth) ─
+import { getModel } from "@/lib/ai-router";
 export const MODELS = {
-  PLANNER:            "gemini-2.5-flash",
-  CONCEPT_GENERATOR:  "gemini-2.5-flash",
-  EDITORIAL_ANALYZER: "gemini-2.5-pro",
-  HOOK_DETECTOR:      "gemini-2.5-flash",
-  TRANSITION_PLANNER: "gemini-2.5-flash",
-  CAPTION_GENERATOR:  "gemini-2.5-flash",
-  MUSIC_SELECTOR:     "gemini-2.5-flash",
-  QA_VALIDATOR:       "gemini-2.5-flash",
+  PLANNER:            getModel("planning"),
+  CONCEPT_GENERATOR:  getModel("planning"),
+  EDITORIAL_ANALYZER: getModel("planning"),
+  HOOK_DETECTOR:      getModel("planning"),
+  TRANSITION_PLANNER: getModel("planning"),
+  CAPTION_GENERATOR:  getModel("planning"),
+  MUSIC_SELECTOR:     getModel("planning"),
+  QA_VALIDATOR:       getModel("evaluate"),
 } as const;
 
 // ── Main orchestrator ─────────────────────────────────────────────────────────

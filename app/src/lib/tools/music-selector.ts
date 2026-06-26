@@ -16,8 +16,9 @@
 
 import { geminiRequest } from "@/lib/gemini";
 import type { Tool, ToolContext, ToolResult } from "./types";
+import { getModel } from "@/lib/ai-router";
 
-const MODEL = "gemini-2.5-pro";
+const MODEL = getModel("chat");
 
 export interface MusicSelectorInput {
   cluster: string;
@@ -121,7 +122,7 @@ Return ONLY JSON:
 
       const data = await geminiRequest(MODEL, {
         contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: { responseMimeType: "application/json", temperature: 0.35 },
+        generationConfig: { responseMimeType: "application/json", temperature: 1.0, maxOutputTokens: 2048, thinkingConfig: { thinkingBudget: 1500 } },
       });
 
       const raw = (data as { candidates?: { content?: { parts?: { text?: string }[] } }[] })

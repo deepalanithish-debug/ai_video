@@ -116,7 +116,7 @@ Return ONLY JSON:
 
       const data = await geminiRequest(MODEL, {
         contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: { responseMimeType: "application/json", temperature: 0.25 },
+        generationConfig: { responseMimeType: "application/json", temperature: 1.0, maxOutputTokens: 2048, thinkingConfig: { thinkingBudget: 1500 } },
       });
 
       const raw = (data as { candidates?: { content?: { parts?: { text?: string }[] } }[] })

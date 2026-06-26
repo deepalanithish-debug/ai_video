@@ -183,7 +183,8 @@ Generate a complete timeline JSON object following this structure:
       ],
       "overlays": [],
       "motionStyle": "<static|slow-pan|fast-cut|ken-burns|zoom-pulse>",
-      "mood": "<luxury|energetic|calm|dramatic|playful>"
+      "mood": "<luxury|energetic|calm|dramatic|playful>",
+      "stockSearchQuery": "<3-5 word Pexels stock video search term for this scene, e.g. 'man walking beach sunset'>"
     }
   ],
   "audioLayers": [
@@ -230,8 +231,9 @@ export async function generateLineup(
     contents: [{ role: "user", parts: [{ text: contextPrompt }] }],
     generationConfig: {
       responseMimeType: "application/json",
-      temperature: 0.4,
-      topP: 0.85,
+      temperature: 1.0,
+      maxOutputTokens: 8192,
+      thinkingConfig: { thinkingBudget: 8000 },
     },
   });
 

@@ -2,430 +2,340 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import VibeChat from "@/components/VibeChat";
+import { useEditorStore } from "@/store/editorStore";
+import { Badge, useToast } from "@/components/ui";
 
-// ─── Tool card data ───────────────────────────────────────────────────────────
-
-interface ToolDef {
-  id: string;
-  icon: string;
-  label: string;
-  desc: string;
-  sub: string;
-  color: string;
-  glow: string;
-  gradFrom: string;
-  gradTo: string;
-  action: "vibe" | "link";
-  href?: string;
-  badge?: string;
-}
-
-const TOOLS: ToolDef[] = [
+const TOOLS = [
   {
-    id: "vibe",
-    icon: "✨",
-    label: "Vibe AI Creator",
-    desc: "Create complete videos from a prompt",
-    sub: "Describe your vision and Vibe builds the full timeline — scenes, captions, transitions — all ready to edit.",
-    color: "#c9a96e",
-    glow: "rgba(201,169,110,0.25)",
-    gradFrom: "#c9a96e",
-    gradTo: "#f5c842",
-    action: "vibe",
-    badge: "AI",
+    id: "lineup",
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+      </svg>
+    ),
+    label: "AI Lineup Generator",
+    description: "Describe your video and get a full scene-by-scene timeline in seconds.",
+    badge: "Most used",
+    badgeColor: "var(--accent)",
   },
   {
-    id: "image-gen",
-    icon: "🎨",
-    label: "Image Generator",
-    desc: "Generate AI images for your videos",
-    sub: "Turn text descriptions into stunning visuals — cinematic stills, product shots, backgrounds, and more.",
-    color: "#7c3aed",
-    glow: "rgba(124,58,237,0.25)",
-    gradFrom: "#7c3aed",
-    gradTo: "#a78bfa",
-    action: "link",
-    href: "/editor?tab=ai",
-    badge: "AI",
+    id: "captions",
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="2" y="7" width="20" height="10" rx="1.5"/>
+        <path d="M7 12h2M11 12h6"/>
+      </svg>
+    ),
+    label: "Auto Caption",
+    description: "Generate animated captions for all scenes based on your prompt.",
+    badge: null,
+    badgeColor: null,
+    comingSoon: true,
   },
   {
-    id: "video-gen",
-    icon: "🎬",
-    label: "Video Generator",
-    desc: "Generate AI video clips",
-    sub: "Convert text or images into short video sequences. Perfect for B-roll, transitions, and scene starters.",
-    color: "#06b6d4",
-    glow: "rgba(6,182,212,0.25)",
-    gradFrom: "#06b6d4",
-    gradTo: "#67e8f9",
-    action: "link",
-    href: "/editor?tab=ai",
-    badge: "AI",
+    id: "transitions",
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M5 12h14M12 5l7 7-7 7"/>
+      </svg>
+    ),
+    label: "Smart Transitions",
+    description: "AI selects the best transition for each scene cut based on mood and pacing.",
+    badge: null,
+    badgeColor: null,
+    comingSoon: true,
+  },
+  {
+    id: "pacing",
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10"/>
+        <polyline points="12 6 12 12 16 14"/>
+      </svg>
+    ),
+    label: "Pacing Optimizer",
+    description: "Automatically adjust scene durations for optimal viewer retention.",
+    badge: null,
+    badgeColor: null,
+    comingSoon: true,
+  },
+  {
+    id: "music",
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M9 18V5l12-2v13"/>
+        <circle cx="6" cy="18" r="3"/>
+        <circle cx="18" cy="16" r="3"/>
+      </svg>
+    ),
+    label: "Music Matcher",
+    description: "Suggest background music that matches your video's mood and tempo.",
+    badge: "Beta",
+    badgeColor: "var(--ai)",
+    comingSoon: true,
+  },
+  {
+    id: "script",
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+        <line x1="16" y1="13" x2="8" y2="13"/>
+        <line x1="16" y1="17" x2="8" y2="17"/>
+      </svg>
+    ),
+    label: "Script to Video",
+    description: "Paste a script and watch VydeoAI build your entire video structure.",
+    badge: "New",
+    badgeColor: "var(--success)",
   },
 ];
 
-// ─── Feature card ─────────────────────────────────────────────────────────────
-
-function ToolCard({
-  tool,
-  onVibeOpen,
-  router,
-}: {
-  tool: ToolDef;
-  onVibeOpen: () => void;
-  router: ReturnType<typeof useRouter>;
-}) {
-  const [hovered, setHovered] = useState(false);
-
-  function handleClick() {
-    if (tool.action === "vibe") {
-      onVibeOpen();
-    } else if (tool.href) {
-      router.push(tool.href);
-    }
-  }
-
-  return (
-    <div
-      onClick={handleClick}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        flex: "1 1 280px",
-        minWidth: 280,
-        maxWidth: 380,
-        borderRadius: 20,
-        overflow: "hidden",
-        background: "rgba(255,255,255,0.03)",
-        border: hovered
-          ? `1px solid ${tool.color}55`
-          : "1px solid rgba(255,255,255,0.08)",
-        cursor: "pointer",
-        transition: "all 0.25s ease",
-        transform: hovered ? "translateY(-6px)" : "translateY(0)",
-        boxShadow: hovered
-          ? `0 20px 60px ${tool.glow}, 0 0 0 1px ${tool.color}30`
-          : "none",
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
-      {/* Card gradient banner */}
-      <div
-        style={{
-          height: 6,
-          background: `linear-gradient(90deg, ${tool.gradFrom} 0%, ${tool.gradTo} 100%)`,
-          opacity: hovered ? 1 : 0.5,
-          transition: "opacity 0.25s",
-        }}
-      />
-
-      <div style={{ padding: "28px 28px 32px", flex: 1, display: "flex", flexDirection: "column" }}>
-        {/* Icon + badge row */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "flex-start",
-            justifyContent: "space-between",
-            marginBottom: 20,
-          }}
-        >
-          {/* Icon orb */}
-          <div
-            style={{
-              width: 64,
-              height: 64,
-              borderRadius: 18,
-              background: `linear-gradient(135deg, ${tool.gradFrom}22 0%, ${tool.gradTo}18 100%)`,
-              border: `1px solid ${tool.color}30`,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 28,
-              boxShadow: hovered ? `0 0 32px ${tool.glow}` : "none",
-              transition: "box-shadow 0.25s",
-            }}
-          >
-            {tool.icon}
-          </div>
-
-          {tool.badge && (
-            <span
-              style={{
-                fontSize: 11,
-                fontWeight: 700,
-                padding: "3px 10px",
-                borderRadius: 20,
-                background: `${tool.color}18`,
-                border: `1px solid ${tool.color}35`,
-                color: tool.color,
-                letterSpacing: "0.05em",
-              }}
-            >
-              {tool.badge}
-            </span>
-          )}
-        </div>
-
-        {/* Text */}
-        <div
-          style={{
-            color: "#f1f1f6",
-            fontWeight: 800,
-            fontSize: 20,
-            marginBottom: 6,
-            letterSpacing: "-0.3px",
-          }}
-        >
-          {tool.label}
-        </div>
-        <div
-          style={{
-            color: tool.color,
-            fontSize: 13,
-            fontWeight: 600,
-            marginBottom: 12,
-          }}
-        >
-          {tool.desc}
-        </div>
-        <div
-          style={{
-            color: "rgba(241,241,246,0.45)",
-            fontSize: 13,
-            lineHeight: 1.65,
-            flex: 1,
-          }}
-        >
-          {tool.sub}
-        </div>
-
-        {/* CTA */}
-        <div
-          style={{
-            marginTop: 24,
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            color: tool.color,
-            fontSize: 14,
-            fontWeight: 700,
-            opacity: hovered ? 1 : 0.7,
-            transition: "opacity 0.2s, transform 0.2s",
-            transform: hovered ? "translateX(4px)" : "translateX(0)",
-          }}
-        >
-          {tool.action === "vibe" ? "Start creating" : "Open in Editor"}
-          <span style={{ fontSize: 16 }}>→</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Main page ────────────────────────────────────────────────────────────────
+const QUICK_PROMPTS = [
+  "15-second Instagram Reel for a luxury skincare brand",
+  "60-second YouTube ad with a strong call to action",
+  "TikTok product launch — hook in first 3 seconds",
+  "Brand story for a sustainable fashion startup",
+  "Event teaser — dramatic and high-energy",
+];
 
 export default function AIToolsPage() {
   const router = useRouter();
-  const [vibeOpen, setVibeOpen] = useState(false);
+  const [prompt, setPrompt] = useState("");
+  const [activeTool, setActiveTool] = useState("lineup");
+  const [isRunning, setIsRunning] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const { setScenes, setIsGenerating, aspectRatio } = useEditorStore();
+  const { info } = useToast();
 
-  function handleDraftCreated(draftId: string) {
-    setVibeOpen(false);
-    router.push(`/editor?draft=${draftId}`);
-  }
+  const handleRun = async () => {
+    if (isRunning) return;
+
+    // Tools that aren't wired to a real backend yet — be honest instead of faking work.
+    if (TOOLS.find(t => t.id === activeTool)?.comingSoon) {
+      info("This tool is coming soon");
+      return;
+    }
+
+    if (!prompt.trim()) return;
+
+    setIsRunning(true);
+    setResult(null);
+    setError(null);
+    setIsGenerating(true);
+
+    try {
+      if (activeTool === "lineup" || activeTool === "script") {
+        const res = await fetch("/api/lineup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt: prompt.trim(), workspaceSlug: "vydeoai", aspectRatio }),
+          signal: AbortSignal.timeout(90_000),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? data.message ?? "Generation failed");
+        if (data.lineup?.timeline?.scenes?.length) {
+          const scenes = data.lineup.timeline.scenes.map((s: Record<string, unknown>, i: number) => ({
+            id: (s.id as string) ?? crypto.randomUUID(),
+            order: i,
+            label: (s.label as string) ?? `Scene ${i + 1}`,
+            description: (s.description as string) ?? "",
+            duration: (s.duration as number) ?? 4,
+            clipId: null, clipSrc: null, clipType: null,
+            captions: [],
+            transition: { type: "fade" as const, duration: 0.5 },
+            mood: (s.mood as string) ?? "calm",
+            colorGrade: null, effects: [], colorAdjustments: { exposure: 0, contrast: 0, saturation: 0, temperature: 0, tint: 0, highlights: 0, shadows: 0 },
+          }));
+          setScenes(scenes);
+          setResult(`Generated ${scenes.length} scenes. Opening editor…`);
+          setTimeout(() => router.push("/editor/new"), 1200);
+        } else {
+          setError("No scenes were generated — try a more detailed prompt.");
+        }
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Something went wrong");
+    } finally {
+      setIsRunning(false);
+      setIsGenerating(false);
+    }
+  };
+
+  const activeComingSoon = !!TOOLS.find(t => t.id === activeTool)?.comingSoon;
 
   return (
-    <>
-      <style>{`
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(8px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes gradientShift {
-          0% { background-position: 0% 50%; }
-          50% { background-position: 100% 50%; }
-          100% { background-position: 0% 50%; }
-        }
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
-        * { box-sizing: border-box; }
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
-      `}</style>
+    <div style={{ padding: "32px", maxWidth: 860, margin: "0 auto" }}>
+      {/* Header */}
+      <div style={{ marginBottom: 32 }}>
+        <h1 style={{ fontSize: 24, fontWeight: 700, color: "var(--text-primary)", margin: "0 0 6px", letterSpacing: "-0.02em" }}>
+          AI Tools
+        </h1>
+        <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0, lineHeight: 1.6 }}>
+          Let AI handle the repetitive work. Pick a tool, describe your vision, hit run.
+        </p>
+      </div>
 
-      <div
-        style={{
-          minHeight: "100vh",
-          background: "#07071a",
-          backgroundImage: `
-            linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px)
-          `,
-          backgroundSize: "40px 40px",
-          fontFamily: "var(--font-inter), -apple-system, sans-serif",
-          color: "#f1f1f6",
-          animation: "fadeIn 0.4s ease both",
-          overflowY: "auto",
-        }}
-      >
-        {/* ── Back nav ────────────────────────────────────────────────────── */}
-        <div style={{ padding: "20px 32px 0", maxWidth: 1100, margin: "0 auto" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 28 }}>
+        {TOOLS.map(tool => (
           <button
-            onClick={() => router.push("/")}
+            key={tool.id}
+            onClick={() => setActiveTool(tool.id)}
             style={{
-              background: "none",
-              border: "none",
-              color: "rgba(241,241,246,0.4)",
+              padding: "14px 16px",
+              background: activeTool === tool.id ? "var(--accent-bg)" : "var(--bg-surface)",
+              border: `1px solid ${activeTool === tool.id ? "var(--accent-dim)" : "var(--border)"}`,
+              borderRadius: "var(--r-lg)",
               cursor: "pointer",
-              fontSize: 14,
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              padding: "6px 0",
-              transition: "color 0.2s",
-              fontFamily: "inherit",
+              textAlign: "left",
+              transition: "all 0.14s ease",
+              display: "flex", flexDirection: "column", gap: 8,
             }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.color = "#f1f1f6";
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.color = "rgba(241,241,246,0.4)";
-            }}
+            onMouseEnter={e => { if (activeTool !== tool.id) { e.currentTarget.style.borderColor = "var(--border-hover)"; e.currentTarget.style.background = "var(--bg-elevated)"; }}}
+            onMouseLeave={e => { if (activeTool !== tool.id) { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.background = "var(--bg-surface)"; }}}
           >
-            ← Back to Home
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+              <div style={{ color: activeTool === tool.id ? "var(--accent)" : "var(--text-muted)" }}>
+                {tool.icon}
+              </div>
+              {tool.comingSoon ? (
+                <Badge variant="default" size="xs">Coming soon</Badge>
+              ) : tool.badge ? (
+                <span style={{
+                  fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 99,
+                  background: `color-mix(in srgb, ${tool.badgeColor} 12%, transparent)`,
+                  color: tool.badgeColor ?? "var(--accent)",
+                  border: `1px solid color-mix(in srgb, ${tool.badgeColor} 25%, transparent)`,
+                  letterSpacing: "0.04em", textTransform: "uppercase",
+                }}>
+                  {tool.badge}
+                </span>
+              ) : null}
+            </div>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: activeTool === tool.id ? "var(--text-primary)" : "var(--text-secondary)", marginBottom: 3 }}>
+                {tool.label}
+              </div>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.5 }}>
+                {tool.description}
+              </div>
+            </div>
+          </button>
+        ))}
+      </div>
+
+      {/* Prompt area */}
+      <div style={{
+        background: "var(--bg-surface)", border: "1px solid var(--border)",
+        borderRadius: "var(--r-xl)", padding: "20px", display: "flex", flexDirection: "column", gap: 14,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{
+            width: 7, height: 7, borderRadius: "50%",
+            background: isRunning ? "var(--accent)" : "var(--text-disabled)",
+            boxShadow: isRunning ? "0 0 8px var(--accent)" : "none",
+            animation: isRunning ? "pulse-glow 1.2s ease infinite" : "none",
+          }} />
+          <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)" }}>
+            {TOOLS.find(t => t.id === activeTool)?.label}
+          </span>
+        </div>
+
+        <textarea
+          value={prompt}
+          onChange={e => setPrompt(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleRun(); }}
+          placeholder={activeTool === "lineup" || activeTool === "script"
+            ? "Describe your video — e.g. '15-second Instagram ad for a skincare brand with 5 scenes, luxury feel'"
+            : "Optional: add context or instructions…"}
+          rows={4}
+          disabled={isRunning}
+          style={{
+            width: "100%", background: "var(--bg-inset)", border: "1px solid var(--border)",
+            borderRadius: "var(--r-md)", padding: "12px 14px",
+            fontSize: 13, color: "var(--text-primary)", resize: "none",
+            fontFamily: "var(--font-sans)", lineHeight: 1.6,
+            transition: "border-color 0.14s ease",
+          }}
+          onFocus={e => e.currentTarget.style.borderColor = "var(--border-focus)"}
+          onBlur={e => e.currentTarget.style.borderColor = "var(--border)"}
+        />
+
+        {/* Quick prompts */}
+        {(activeTool === "lineup" || activeTool === "script") && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {QUICK_PROMPTS.map(p => (
+              <button key={p} onClick={() => setPrompt(p)} style={{
+                padding: "4px 10px", borderRadius: 99, fontSize: 11, fontWeight: 500,
+                background: "var(--bg-elevated)", border: "1px solid var(--border)",
+                color: "var(--text-muted)", cursor: "pointer", transition: "all 0.12s ease",
+              }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--accent-dim)"; e.currentTarget.style.color = "var(--accent)"; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.color = "var(--text-muted)"; }}
+              >
+                {p.length > 38 ? p.slice(0, 36) + "…" : p}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <span style={{ fontSize: 11, color: "var(--text-disabled)" }}>⌘ + Enter to run</span>
+          <button
+            onClick={handleRun}
+            disabled={isRunning || activeComingSoon || (!prompt.trim() && (activeTool === "lineup" || activeTool === "script"))}
+            style={{
+              padding: "9px 22px", borderRadius: "var(--r-md)",
+              background: "var(--accent)", border: "none",
+              color: "#fff", fontSize: 13, fontWeight: 600,
+              cursor: isRunning || activeComingSoon || (!prompt.trim() && activeTool === "lineup") ? "not-allowed" : "pointer",
+              opacity: isRunning || activeComingSoon || (!prompt.trim() && (activeTool === "lineup" || activeTool === "script")) ? 0.5 : 1,
+              display: "flex", alignItems: "center", gap: 7,
+              transition: "opacity 0.14s ease",
+            }}>
+            {isRunning ? (
+              <>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+                  style={{ animation: "spin 0.9s linear infinite" }}>
+                  <path d="M21 12a9 9 0 11-6.219-8.56"/>
+                </svg>
+                Running…
+              </>
+            ) : (
+              <>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <polygon points="5 3 19 12 5 21 5 3"/>
+                </svg>
+                Run
+              </>
+            )}
           </button>
         </div>
 
-        <main
-          style={{
-            maxWidth: 1100,
-            margin: "0 auto",
-            padding: "56px 32px 100px",
-          }}
-        >
-          {/* ── Page header ───────────────────────────────────────────────── */}
-          <section style={{ marginBottom: 64, animation: "fadeIn 0.5s ease both" }}>
-            {/* Label */}
-            <div
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 8,
-                background: "rgba(124,58,237,0.1)",
-                border: "1px solid rgba(124,58,237,0.25)",
-                borderRadius: 20,
-                padding: "5px 14px",
-                fontSize: 12,
-                fontWeight: 600,
-                color: "#a78bfa",
-                marginBottom: 20,
-                letterSpacing: "0.04em",
-              }}
-            >
-              ⚡ Powered by AI
-            </div>
-
-            <h1
-              style={{
-                margin: "0 0 12px",
-                fontSize: 48,
-                fontWeight: 900,
-                letterSpacing: "-0.8px",
-                lineHeight: 1.1,
-                background:
-                  "linear-gradient(135deg, #f1f1f6 20%, #7c3aed 60%, #06b6d4 100%)",
-                backgroundSize: "200% auto",
-                WebkitBackgroundClip: "text",
-                WebkitTextFillColor: "transparent",
-                animation: "gradientShift 5s linear infinite",
-              }}
-            >
-              AI Studio
-            </h1>
-            <p
-              style={{
-                margin: 0,
-                fontSize: 18,
-                color: "rgba(241,241,246,0.45)",
-                maxWidth: 520,
-                lineHeight: 1.6,
-                fontWeight: 400,
-              }}
-            >
-              All of VydeoAI&apos;s AI tools in one place. Generate images, create videos from prompts, and let Vibe build complete timelines for you.
-            </p>
-          </section>
-
-          {/* ── Tool cards ────────────────────────────────────────────────── */}
-          <section>
-            <div
-              style={{
-                display: "flex",
-                gap: 24,
-                flexWrap: "wrap",
-                animation: "fadeIn 0.5s ease 0.15s both",
-              }}
-            >
-              {TOOLS.map((tool) => (
-                <ToolCard
-                  key={tool.id}
-                  tool={tool}
-                  onVibeOpen={() => setVibeOpen(true)}
-                  router={router}
-                />
-              ))}
-            </div>
-          </section>
-
-          {/* ── Bottom tip ────────────────────────────────────────────────── */}
-          <section
-            style={{
-              marginTop: 64,
-              padding: "24px 28px",
-              borderRadius: 16,
-              background: "rgba(124,58,237,0.06)",
-              border: "1px solid rgba(124,58,237,0.15)",
-              display: "flex",
-              alignItems: "center",
-              gap: 16,
-              animation: "fadeIn 0.5s ease 0.3s both",
-            }}
-          >
-            <div style={{ fontSize: 28, flexShrink: 0 }}>💡</div>
-            <div>
-              <div
-                style={{
-                  color: "#f1f1f6",
-                  fontWeight: 600,
-                  fontSize: 15,
-                  marginBottom: 4,
-                }}
-              >
-                Pro tip: Let Vibe do the heavy lifting
-              </div>
-              <div
-                style={{
-                  color: "rgba(241,241,246,0.45)",
-                  fontSize: 13,
-                  lineHeight: 1.5,
-                }}
-              >
-                Describe your video in plain language and Vibe generates a complete multi-scene timeline with captions and transitions. You can then fine-tune everything in the editor.
-              </div>
-            </div>
-          </section>
-        </main>
+        {/* Result / error */}
+        {result && (
+          <div style={{
+            padding: "10px 14px", borderRadius: "var(--r-md)",
+            background: "var(--success-bg)", border: "1px solid rgba(52,211,153,0.18)",
+            fontSize: 12, color: "var(--success)", display: "flex", gap: 8, alignItems: "center",
+          }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
+            {result}
+          </div>
+        )}
+        {error && (
+          <div style={{
+            padding: "10px 14px", borderRadius: "var(--r-md)",
+            background: "var(--error-bg)", border: "1px solid rgba(248,113,113,0.18)",
+            fontSize: 12, color: "var(--error)",
+          }}>
+            {error}
+          </div>
+        )}
       </div>
-
-      {/* Vibe chat modal */}
-      <VibeChat
-        isOpen={vibeOpen}
-        onClose={() => setVibeOpen(false)}
-        onDraftCreated={handleDraftCreated}
-      />
-    </>
+    </div>
   );
 }

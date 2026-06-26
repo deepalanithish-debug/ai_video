@@ -112,7 +112,7 @@ If no clips, set clipIndex: null and describe the shot to film.`;
 
       const data = await geminiRequest(MODEL, {
         contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: { responseMimeType: "application/json", temperature: 0.3, topP: 0.85 },
+        generationConfig: { responseMimeType: "application/json", temperature: 1.0, maxOutputTokens: 2048, thinkingConfig: { thinkingBudget: 3000 } },
       });
 
       const raw = (data as { candidates?: { content?: { parts?: { text?: string }[] } }[] })

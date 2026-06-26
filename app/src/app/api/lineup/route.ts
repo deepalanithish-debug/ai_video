@@ -10,10 +10,24 @@ export const maxDuration = 300;
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { prompt, workspaceSlug, runQA = false, aspectRatio, geminiClips, brandOverrides, existingTimeline } = body;
+    const {
+      prompt, workspaceSlug, runQA = false, aspectRatio, geminiClips, brandOverrides, existingTimeline,
+      // C1 — user-selected controls forwarded from the workspace UI. Folded into the
+      // prompt below so they actually influence generation (no agent-pipeline refactor).
+      duration, workflow, platform, stylePreset,
+    } = body;
     const hasClips = Array.isArray(geminiClips) && geminiClips.length > 0;
     const overrides = brandOverrides as BrandOverrides | undefined;
     const isRefinement = Boolean(existingTimeline);
+
+    // C1 — build a directive line from the user's controls and inject it into the
+    // model input. Only includes fields that were actually provided.
+    const directiveParts: string[] = [];
+    if (typeof platform === "string" && platform.trim()) directiveParts.push(`Target platform: ${platform.trim()}.`);
+    if (typeof duration === "number" && duration > 0) directiveParts.push(`Target total duration: ${duration}s.`);
+    if (typeof stylePreset === "string" && stylePreset.trim()) directiveParts.push(`Visual style: ${stylePreset.trim()}.`);
+    if (typeof workflow === "string" && workflow.trim()) directiveParts.push(`Workflow / format: ${workflow.trim()}.`);
+    const controlDirective = directiveParts.length ? `${directiveParts.join(" ")}\n\n` : "";
 
     if (!prompt || typeof prompt !== "string" || (!isRefinement && prompt.trim().length < 10)) {
       return NextResponse.json({ error: "Prompt must be at least 10 characters." }, { status: 400 });
@@ -35,8 +49,8 @@ export async function POST(req: NextRequest) {
       : [];
 
     const refinedPrompt = isRefinement
-      ? `REFINEMENT REQUEST — modify the existing timeline below based on the user's instruction. Preserve scene IDs, overall mood, style, and structure unless explicitly asked to change them. Only change what was requested.\n\nEXISTING TIMELINE:\n${JSON.stringify(existingTimeline, null, 2)}\n\nUSER INSTRUCTION: ${prompt.trim()}`
-      : prompt.trim();
+      ? `REFINEMENT REQUEST — modify the existing timeline below based on the user's instruction. Preserve scene IDs, overall mood, style, and structure unless explicitly asked to change them. Only change what was requested.\n\nEXISTING TIMELINE:\n${JSON.stringify(existingTimeline, null, 2)}\n\n${controlDirective}USER INSTRUCTION: ${prompt.trim()}`
+      : `${controlDirective}${prompt.trim()}`;
 
     try {
       const result = await runAgentPipeline({

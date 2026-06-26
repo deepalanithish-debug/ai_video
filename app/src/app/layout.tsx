@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 
@@ -6,21 +6,26 @@ const inter = Inter({
   subsets: ["latin"],
   variable: "--font-inter",
   display: "swap",
+  weight: ["300", "400", "500", "600", "700", "800"],
 });
 
 export const metadata: Metadata = {
-  title: "VydeoAI — AI-Powered Video Editor",
-  description: "Create stunning videos with AI. Generate, edit, and elevate your content with VydeoAI.",
+  title: { default: "VydeoAI", template: "%s · VydeoAI" },
+  description: "AI-powered video editor for marketing teams, agencies, and content creators.",
+  keywords: ["AI video editor", "video production", "marketing", "content creation"],
+  authors: [{ name: "VydeoAI" }],
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: "#0C0C0F",
+};
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={inter.variable}>
-      <body style={{ margin: 0, padding: 0 }}>{children}</body>
+      <body>{children}</body>
     </html>
   );
 }

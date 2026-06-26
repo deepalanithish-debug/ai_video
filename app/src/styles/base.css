@@ -1,0 +1,55 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   VydeoAI Design System — BASE (reset · document · accessibility)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background-color: var(--bg-base);
+  color: var(--text-primary);
+  line-height: 1.5;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  overflow-x: hidden;
+}
+
+/* Form controls inherit typography + color; normalize button chrome */
+button, input, select, textarea { font: inherit; color: inherit; }
+button { -webkit-appearance: none; appearance: none; cursor: pointer; }
+button:disabled { cursor: not-allowed; }
+img, svg, video { display: block; max-width: 100%; }
+
+/* ── Custom Scrollbar ─────────────────────────────────────────────────────*/
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: var(--r-full); }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.14); }
+
+/* ── Selection ────────────────────────────────────────────────────────────*/
+::selection { background: var(--accent-subtle); color: var(--text-primary); }
+
+/* ── Focus — visible ring for keyboard users only ─────────────────────────*/
+:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; border-radius: var(--r-sm); }
+/* Suppress the UA outline only for non-keyboard focus, so :focus-visible still wins for keyboard users */
+textarea:focus:not(:focus-visible),
+input:focus:not(:focus-visible),
+select:focus:not(:focus-visible),
+button:focus:not(:focus-visible) { outline: none; }
+
+/* ── Reduced motion — honor the OS setting (a11y) ─────────────────────────*/
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -114,7 +114,7 @@ If the brief doesn't specify something, infer it from the overall context.`;
         { role: "model", parts: [{ text: "Understood. I will extract the user's exact intent without adding assumptions." }] },
         { role: "user", parts: [{ text: userPrompt }] },
       ],
-      generationConfig: { responseMimeType: "application/json", temperature: 0.1, topP: 0.8 },
+      generationConfig: { responseMimeType: "application/json", temperature: 1.0, maxOutputTokens: 2048, thinkingConfig: { thinkingBudget: 2000 } },
     });
 
     const raw = (data as { candidates?: { content?: { parts?: { text?: string }[] } }[] })

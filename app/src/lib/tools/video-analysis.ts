@@ -18,8 +18,9 @@
 import { geminiRequest } from "@/lib/gemini";
 import type { GeminiClip } from "@/lib/gemini";
 import type { Tool, ToolContext, ToolResult, WorkflowCluster } from "./types";
+import { getModel } from "@/lib/ai-router";
 
-const MODEL = "gemini-2.5-pro";
+const MODEL = getModel("vision");
 
 export interface VideoAnalysisInput {
   clips: GeminiClip[];
@@ -119,7 +120,7 @@ export const videoAnalysisTool: Tool<VideoAnalysisInput, VideoAnalysisOutput> = 
 
       const data = await geminiRequest(MODEL, {
         contents: [{ role: "user", parts }],
-        generationConfig: { responseMimeType: "application/json", temperature: 0.15, topP: 0.8 },
+        generationConfig: { responseMimeType: "application/json", temperature: 1.0, maxOutputTokens: 4096, thinkingConfig: { thinkingBudget: 4000 } },
       });
 
       const raw = extractText(data);

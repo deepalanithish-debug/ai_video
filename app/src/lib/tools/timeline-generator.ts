@@ -179,7 +179,12 @@ Return ONLY this JSON:
 
   const data = await geminiRequest(model, {
     contents: [{ role: "user", parts: [{ text: prompt }] }],
-    generationConfig: { responseMimeType: "application/json", temperature: 0.45, topP: 0.88 },
+    generationConfig: {
+      responseMimeType: "application/json",
+      temperature: 1.0,
+      maxOutputTokens: 8192,
+      thinkingConfig: { thinkingBudget: 8000 },
+    },
   });
 
   const raw = extractText(data);
@@ -303,7 +308,12 @@ Return ONLY this JSON. Create ONE scene per clip. Every clip in CLIP INVENTORY m
 
   const data = await geminiRequest(model, {
     contents: [{ role: "user", parts }],
-    generationConfig: { responseMimeType: "application/json", temperature: 0.3, topP: 0.85 },
+    generationConfig: {
+      responseMimeType: "application/json",
+      temperature: 1.0,
+      maxOutputTokens: 8192,
+      thinkingConfig: { thinkingBudget: 8000 },
+    },
   });
 
   const raw = extractText(data);

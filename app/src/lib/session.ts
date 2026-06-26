@@ -3,9 +3,11 @@ import { cookies } from "next/headers";
 import { NextRequest } from "next/server";
 
 const COOKIE_NAME = "vydeo_session";
-const SECRET = new TextEncoder().encode(
-  process.env.SESSION_SECRET ?? "vydeo-ai-secret-key-change-in-production-32chars"
-);
+const rawSecret = process.env.SESSION_SECRET;
+if (!rawSecret && process.env.NODE_ENV === "production") {
+  throw new Error("SESSION_SECRET environment variable is required in production.");
+}
+const SECRET = new TextEncoder().encode(rawSecret ?? "dev-only-insecure-secret-do-not-use-in-prod");
 const EXPIRY = "7d";
 const REMEMBER_EXPIRY = "30d";
 

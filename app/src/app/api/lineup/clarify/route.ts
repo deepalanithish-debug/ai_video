@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { geminiRequest } from "@/lib/gemini";
 import { MODELS } from "@/lib/agent-pipeline";
 import { getWorkspace } from "@/lib/workspaces/asaya";
+import { getModel } from "@/lib/ai-router";
 
 export const maxDuration = 30;
 
@@ -71,10 +72,10 @@ Common gaps to check for (only ask if actually missing):
 - Tone (if contradicts brand defaults and brief is vague)
 - Reference style or "feel like" (if brief is very short)`;
 
-    const data = await geminiRequest("gemini-2.5-flash", {
+    const data = await geminiRequest(getModel("clarify"), {
       system_instruction: { parts: [{ text: systemPrompt }] },
       contents: [{ role: "user", parts: [{ text: userPrompt }] }],
-      generationConfig: { responseMimeType: "application/json", temperature: 0.2 },
+      generationConfig: { responseMimeType: "application/json", temperature: 1.0, maxOutputTokens: 1024, thinkingConfig: { thinkingBudget: 1000 } },
     });
 
     const raw = (data as { candidates?: { content?: { parts?: { text?: string }[] } }[] })
